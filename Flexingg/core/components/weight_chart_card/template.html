@@ -1,0 +1,177 @@
+{% load static %}
+
+<div class="bg-surface rounded-lg shadow-md p-6 mb-8">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold">Weight Progress</h2>
+        <div class="flex items-center space-x-4">
+            <select id="chartRange" class="bg-surface-variant text-on-surface-variant px-3 py-1 rounded text-sm">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 3 months</option>
+                <option value="180">Last 6 months</option>
+                <option value="365">Last year</option>
+                <option value="all">All time</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Chart Container -->
+    <div class="h-64">
+        <canvas id="weightChart"></canvas>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-outline">
+        <div>
+            <p class="text-on-surface-variant text-sm">Current Weight</p>
+            <p class="text-2xl font-bold text-on-surface" id="currentWeight">-</p>
+        </div>
+        <div>
+            <p class="text-on-surface-variant text-sm">Average Weight</p>
+            <p class="text-2xl font-bold text-on-surface" id="averageWeight">-</p>
+        </div>
+        <div>
+            <p class="text-on-surface-variant text-sm">Total Change</p>
+            <p class="text-2xl font-bold" id="totalChange">-</p>
+        </div>
+        <div>
+            <p class="text-on-surface-variant text-sm">Progress to Goal</p>
+            <p class="text-2xl font-bold" id="progressPercentage">-</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const chartRange = document.getElementById('chartRange');
+        let chart = null;
+
+        function updateChart(range) {
+            fetch(`{% url 'fitness:weight-chart-data' %}?range=${range}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (chart) {
+                        chart.destroy();
+                    }
+                    initializeChart(data);
+                });
+
+            fetch(`{% url 'fitness:weight-stats' %}?range=${range}`)
+                .then(response => response.json())
+                .then(updateStats);
+        }
+
+        function initializeChart(data) {
+            const ctx = document.getElementById('weightChart').getContext('2d');
+            const weightData = data.weight_data || [];
+            const goalData = data.goal_data;
+
+            const datasets = [{
+                label: 'Weight',
+                data: weightData.map(record => ({
+                    x: new Date(record.date),
+                    y: record.weight
+                })),
+                borderColor: getComputedStyle(document.documentElement)
+                    .getPropertyValue('--primary').trim(),
+                backgroundColor: 'transparent',
+                tension: 0.4
+            }];
+
+            if (goalData) {
+                datasets.push({
+                    label: 'Goal',
+                    data: [
+                        { x: new Date(goalData.start_date), y: goalData.start_weight },
+                        { x: new Date(goalData.target_date), y: goalData.target_weight }
+                    ],
+                    borderColor: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--secondary').trim(),
+                    borderDash: [5, 5],
+                    backgroundColor: 'transparent',
+                    tension: 0
+                });
+            }
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement)
+                                    .getPropertyValue('--outline').trim()
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Weight (kg)'
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement)
+                                    .getPropertyValue('--outline').trim()
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} kg`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateStats(data) {
+            document.getElementById('currentWeight').textContent = 
+                data.latest_weight ? `${data.latest_weight} kg` : '-';
+            document.getElementById('averageWeight').textContent = 
+                data.average_weight ? `${data.average_weight.toFixed(1)} kg` : '-';
+            
+            const totalChange = data.latest_weight && data.first_weight
+                ? (data.latest_weight - data.first_weight).toFixed(1)
+                : null;
+            
+            const changeElement = document.getElementById('totalChange');
+            if (totalChange) {
+                const isPositive = parseFloat(totalChange) > 0;
+                changeElement.textContent = `${isPositive ? '+' : ''}${totalChange} kg`;
+                changeElement.className = `text-2xl font-bold ${isPositive ? 'text-error' : 'text-primary'}`;
+            } else {
+                changeElement.textContent = '-';
+                changeElement.className = 'text-2xl font-bold text-on-surface';
+            }
+
+            const progressElement = document.getElementById('progressPercentage');
+            if (data.progress_percentage !== null) {
+                progressElement.textContent = `${Math.round(data.progress_percentage)}%`;
+                progressElement.className = 'text-2xl font-bold text-primary';
+            } else {
+                progressElement.textContent = '-';
+                progressElement.className = 'text-2xl font-bold text-on-surface';
+            }
+        }
+
+        chartRange.addEventListener('change', function() {
+            updateChart(this.value);
+        });
+
+        // Initial load
+        updateChart(chartRange.value);
+    });
+</script> 

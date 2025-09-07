@@ -1,0 +1,23 @@
+{% if is_authenticated %}
+<a href="#" class="block pixel-border-light bg-[#2a2a2a] p-4 flex items-center space-x-4 cursor-pointer">
+    <div class="w-16 h-16 bg-gray-800 pixel-border flex-shrink-0">
+        <!-- Pixelated Avatar Placeholder -->
+        <img src="https://placehold.co/64x64/222/00f5d4?text=AV" alt="User Avatar" class="w-full h-full object-cover" style="image-rendering: pixelated;">
+    </div>
+    <div>
+        <h2 class="font-pixel text-lg text-white">LVL {{ level|default:"12" }}</h2>
+        <p class="text-sm text-gray-400">Iron Juggernaut</p>
+        <div class="mt-2 w-full">
+            <span class="text-xs font-pixel text-[#00f5d4]">XP</span>
+            <progress max="100" value="{{ progress_percentage|default:"75" }}"></progress>
+        </div>
+    </div>
+</a>
+{% else %}
+<a href="{% url 'fitness:sign_up' %}" class="block pixel-border-light bg-[#2a2a2a] p-4 flex items-center justify-center cursor-pointer">
+    <div class="text-center">
+        <h2 class="font-pixel text-lg text-white">Sign Up / Sign In</h2>
+        <p class="text-sm text-gray-400">Join the Flexin.gg Community</p>
+    </div>
+</a>
+{% endif %}

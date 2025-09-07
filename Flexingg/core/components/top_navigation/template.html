@@ -1,0 +1,10 @@
+{% load static %}
+
+<div class="flex items-center space-x-3">
+    <!-- Dummy Notification Button -->
+    {% component "button" text="🔔" variant="secondary" %}{% endcomponent %}
+    <!-- Coins Component -->
+    {% component "coins" coins=1337 %}{% endcomponent %}
+    <!-- Settings Icon -->
+    {% component "settings_icon" %}{% endcomponent %}
+</div>

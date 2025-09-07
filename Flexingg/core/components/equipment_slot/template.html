@@ -1,0 +1,13 @@
+{% load static %}
+
+<div class="pixel-border border-4 border-dashed border-[#666] p-4 min-h-20 bg-[#333] text-center transition-colors hover:border-[#00f5d4]" {% if slot_name %}data-slot="{{ slot_name }}"{% endif %} {% if draggable %}draggable="true"{% endif %}>
+    {% if item %}
+        <i class="fas fa-dumbbell text-2xl text-white mb-2"></i>
+        <p class="text-[#00f5d4] font-pixel">{{ item.name|default:"Equipped Item" }}</p>
+        <p class="text-gray-300 text-sm">{{ item.description|default:"Equipped equipment boosts your stats!" }}</p>
+    {% else %}
+        <i class="fas fa-plus-circle text-xl text-gray-400"></i>
+        <p class="text-gray-400 font-pixel">Empty Slot</p>
+        <p class="text-xs text-gray-400">Drag item here</p>
+    {% endif %}
+</div>

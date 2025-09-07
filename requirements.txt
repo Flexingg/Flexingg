@@ -1,0 +1,9 @@
+django==5.2.6
+psycopg2-binary==2.9.10
+gunicorn==21.2.0
+django-components==0.141.4
+django-pwa==2.0.1
+whitenoise==6.9.0
+garth==0.5.17
+garminconnect>=0.1.30
+python-dotenv==1.0.1

@@ -1,0 +1,20 @@
+{% load static %}
+{% load component_tags %}
+
+<div class="pixel-border bg-[#2a2a2a] p-6">
+    <h2 class="text-xl font-pixel text-white mb-4">Ongoing Competitions</h2>
+
+    {% if competitions %}
+        {% for competition in competitions %}
+            <div class="mb-4 p-4 pixel-border-light bg-[#333] border border-theme-outline">
+                <h3 class="text-lg font-pixel text-[#00f5d4] mb-2">{{ competition.name|default:"Competition Name" }}</h3>
+                <p class="text-gray-300 mb-3">{{ competition.description|default:"Join this competition to challenge your friends and win rewards!" }}</p>
+                <div class="flex justify-end">
+                    {% component "button" text="Join" variant="primary" %}{% endcomponent %}
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="text-gray-400 text-center py-8 font-pixel">No ongoing competitions available. Check back later!</p>
+    {% endif %}
+</div>

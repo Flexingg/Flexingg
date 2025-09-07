@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="min-h-screen bg-theme-surface flex items-center justify-center px-4">
+    <div class="max-w-md w-full text-center">
+        <div class="mb-8">
+            <i class="fas fa-wifi-slash text-6xl text-theme-primary"></i>
+        </div>
+        
+        <h1 class="text-3xl font-bold text-theme-on-surface mb-4">
+            You're Offline
+        </h1>
+        
+        <p class="text-theme-on-surface-variant mb-8">
+            It looks like you've lost your internet connection. Some features may be unavailable until you're back online.
+        </p>
+
+        <div class="space-y-4">
+            <button 
+                onclick="window.location.reload()" 
+                class="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-theme-on-primary bg-theme-primary hover:bg-theme-primary-variant focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
+            >
+                <i class="fas fa-sync-alt mr-2"></i>
+                Try Again
+            </button>
+
+            <a 
+                href="/"
+                class="w-full inline-flex justify-center items-center px-6 py-3 border border-theme-outline rounded-md shadow-sm text-base font-medium text-theme-on-surface bg-theme-surface hover:bg-theme-surface-variant focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
+            >
+                <i class="fas fa-home mr-2"></i>
+                Go to Homepage
+            </a>
+        </div>
+
+        <div class="mt-8 text-sm text-theme-on-surface-variant">
+            <p>Don't worry! Any changes you make while offline will be saved and synced when you're back online.</p>
+        </div>
+    </div>
+</div>
+{% endblock content %} 

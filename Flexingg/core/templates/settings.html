@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Flexin.gg - Settings{% endblock title %}
+
+{% block top_bar_content %}
+<header class="p-4 flex justify-between items-center bg-[#2a2a2a] border-b-4 border-black flex-shrink-0">
+    <h1 class="font-pixel text-2xl text-white tracking-wider">SETTINGS</h1>
+    <div class="flex items-center space-x-3">
+        <div class="flex items-center">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-2a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" fill="#FFD700"/><path d="M11 15h2v2h-2v-2Zm0-8h2v6h-2V7Z" fill="#FFD700"/><path d="M12 15h2v2h-2z" fill="#E69500"/><path d="M14 7h-2v6h2zM12 5a7 7 0 1 0 0 14A7 7 0 0 0 12 5Z" fill="#FFB800"/><path d="M12 12v3h-2v-3h-2v-2h2v-2h2v2h2v2z" fill="#E69500"/></svg>
+            <span class="font-pixel text-lg text-yellow-300 ml-1">{{ profile.gym_gems }}</span>
+        </div>
+    </div>
+</header>
+{% endblock top_bar_content %}
+
+{% block content %}
+<main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+    <!-- Profile Settings -->
+    <section>
+        <h3 class="font-pixel text-lg text-[#00f5d4]">PROFILE</h3>
+        <form method="post">
+            {% csrf_token %}
+            {% component "profile_section" profile=profile form=form %}{% endcomponent %}
+        </form>
+    </section>
+
+    <!-- Account Settings -->
+    <section><h3 class="font-pixel text-lg text-yellow-300">ACCOUNT</h3>
+        {% component "account_section" profile=profile %}{% endcomponent %}
+    </section>
+    
+    <!-- Notifications -->
+    <section>
+        <h3 class="font-pixel text-lg text-cyan-300">NOTIFICATIONS</h3>
+        {% component "notifications_section" %}{% endcomponent %}
+    </section>
+
+    <!-- Integrations -->
+    <section>
+        <h3 class="font-pixel text-lg text-purple-400">INTEGRATIONS</h3>
+        {% component "integrations_section" %}{% endcomponent %}
+    </section>
+
+    <!-- Action Buttons -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4"/>
+        {% component "save_logout_buttons" %}{% endcomponent %}
+    </section>
+</main>
+{% endblock content %}

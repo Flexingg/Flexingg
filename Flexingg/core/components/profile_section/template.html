@@ -1,0 +1,39 @@
+<div class="pixel-border bg-[#2a2a2a] mt-3 p-4 space-y-4">
+    <div class="flex items-center space-x-4">
+        <img src="{% if profile.avatar %}{{ profile.avatar }}{% else %}https://placehold.co/64x64/222/00f5d4?text=AV{% endif %}" alt="User Avatar" class="w-16 h-16 pixel-border object-cover" style="image-rendering: pixelated;">
+        <button class="pixel-button px-3 py-2 font-pixel text-xs text-gray-300">CHANGE AVATAR</button>
+    </div>
+    <div>
+        <label class="font-pixel text-sm text-gray-400">USERNAME</label>
+        {{ form.username }}
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+            <label class="font-pixel text-sm text-gray-400">HEIGHT</label>
+            <div class="flex items-center space-x-2 mt-1">
+                <div class="relative w-full">
+                    {{ form.height_ft }}
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">ft</span>
+                </div>
+                <div class="relative w-full">
+                    {{ form.height_in }}
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">in</span>
+                </div>
+            </div>
+        </div>
+        <div>
+            <label class="font-pixel text-sm text-gray-400">WEIGHT</label>
+            <div class="flex items-center space-x-2 mt-1">
+                {{ form.weight }}
+                <select class="pixel-select w-24 flex-shrink-0">
+                    <option selected>lbs</option>
+                    <option>kg</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label class="font-pixel text-sm text-gray-400">SEX</label>
+            {{ form.sex }}
+        </div>
+    </div>
+</div>

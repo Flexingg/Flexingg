@@ -1,0 +1,19 @@
+{% load static %}
+{% load component_tags %}
+
+<div class="pixel-border bg-[#2a2a2a] p-6">
+    <h2 class="text-xl font-pixel text-white mb-4">Gym Locker</h2>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {% if slots %}
+            {% for slot in slots %}
+                <div class="text-center">
+                    <h3 class="text-sm font-pixel text-[#00f5d4] mb-2">{{ slot.name|default:"Slot" }}</h3>
+                    {% component "equipment_slot" slot_name=slot.name item=slot.item %}{% endcomponent %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-gray-400 text-center col-span-full py-8 font-pixel">No items equipped yet. Visit the Item Shop to get started!</p>
+        {% endif %}
+    </div>
+</div>

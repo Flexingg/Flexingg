@@ -1,0 +1,84 @@
+{% load static %}
+
+<div id="pwa-install-banner" class="pixel-border bg-[#2a2a2a] p-4 mb-6">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="pixel-border-light bg-[#333] p-2">
+                <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" class="text-[#00f5d4]">
+                    <path d="M2 15V8h2v5h8V8h2v7H2z"/>
+                    <path d="M1 8l7-7 7 7v1H1V8z"/>
+                    <path d="M7 13h2v-3H7v3z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="font-pixel text-sm text-white">Install Flexin.gg</h3>
+                <p class="text-xs text-gray-300">Get the full app experience</p>
+            </div>
+        </div>
+        <button onclick="installPWA()" class="pixel-button px-3 py-2 font-pixel text-xs text-[#00f5d4] hover:bg-[#333]">
+            INSTALL
+        </button>
+    </div>
+</div>
+
+<script>
+function checkPWA() {
+    // Check if we're in a PWA (standalone mode)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const isIOSStandalone = window.navigator.standalone === true;
+    const isAndroidStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+    // Hide the banner if we're in PWA mode
+    if (isStandalone || isIOSStandalone || isAndroidStandalone) {
+        const banner = document.getElementById('pwa-install-banner');
+        if (banner) {
+            banner.style.display = 'none';
+        }
+    }
+}
+
+function installPWA() {
+    // Check if the app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+        return; // Already installed
+    }
+
+    // Trigger the install prompt if available
+    if (window.deferredPrompt) {
+        window.deferredPrompt.prompt();
+        window.deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+                // Hide the banner after successful install
+                const banner = document.getElementById('pwa-install-banner');
+                if (banner) {
+                    banner.style.display = 'none';
+                }
+            } else {
+                console.log('User dismissed the install prompt');
+            }
+            window.deferredPrompt = null;
+        });
+    } else {
+        // Fallback: try to open the install instructions
+        alert('To install, look for the install icon in your browser or add to home screen.');
+    }
+}
+
+// Listen for the beforeinstallprompt event
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.deferredPrompt = e;
+});
+
+// Check PWA status on page load
+document.addEventListener('DOMContentLoaded', checkPWA);
+
+// Also check when the app is installed
+window.addEventListener('appinstalled', () => {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) {
+        banner.style.display = 'none';
+    }
+});
+</script>

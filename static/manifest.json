@@ -1,0 +1,78 @@
+{
+  "name": "Flexin.gg - Gamify Fitness Competitions",
+  "short_name": "Flexin.gg",
+  "id": "flexingg-pwa",
+  "description": "Gamify your fitness journey with competitions and rewards.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "categories": ["lifestyle", "faith", "productivity"],
+  "icons": [
+    {
+      "src": "/static/app/icons/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/app/icons/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Scripture Reading",
+      "short_name": "Scripture",
+      "description": "Open your daily Bible reading",
+      "url": "/?source=shortcut&page=faith/reading",
+      "icons": [
+        {
+          "src": "/static/app/icons/shortcuts/read_icon.png",
+          "sizes": "96x96",
+          "type": "image/png",
+          "purpose": "any"
+        }
+      ]
+    },
+    {
+      "name": "Prayer Journal",
+      "short_name": "Prayer",
+      "description": "Open your prayer journal",
+      "url": "/?source=shortcut&page=faith/prayer",
+      "icons": [
+        {
+          "src": "/static/app/icons/shortcuts/prayer_icon.png",
+          "sizes": "96x96",
+          "type": "image/png",
+          "purpose": "any"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/screenshots/home.png",
+      "sizes": "987x1907",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Home Screen of Flexin.gg"
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "display_override": ["standalone", "minimal-ui"],
+  "lang": "en",
+  "dir": "ltr",
+  "iarc_rating_id": "",
+  "protocol_handlers": [
+    {
+      "protocol": "web+flexingg",
+      "url": "/?action=%s"
+    }
+  ]
+}

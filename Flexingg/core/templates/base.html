@@ -1,0 +1,478 @@
+<!DOCTYPE HTML>
+<html lang="en" class="bg-gray-900">
+{% load static %}
+{% load component_tags %}
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>{% block title %}Flexin.gg{% endblock title %}</title>
+    <meta name="description" content="Gamify your fitness journey with competitions and rewards.">
+    <meta name="apple-mobile-web-app-title" content="Flexin.gg">
+    <meta name="application-name" content="Flexin.gg">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- Dependencies - Load Alpine.js first -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        // Debug Alpine.js loading
+        document.addEventListener('alpine:init', () => {
+            console.log('[Alpine] Framework initialized');
+        });
+    </script>
+
+    <!-- Other dependencies -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="{% static 'app/icons/icon.png' %}">
+
+    <!-- PWA Icons -->
+    <link rel="icon" type="image/png" sizes="512x512" href="{% static 'app/icons/icon.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'app/icons/icon.png' %}">
+    <link rel="mask-icon" href="{% static 'app/icons/icon.png' %}" color="#000000">
+
+    <!-- Chart.js and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Cal-Heatmap and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cal-heatmap@4.2.3/dist/cal-heatmap.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cal-heatmap@4.2.3/dist/cal-heatmap.css">
+    
+    <!-- Theme Classes -->
+    {% if request.user.is_authenticated and request.user.theme_colors %}
+    <style>
+        :root {
+            --surface-color: {{ request.user.theme_colors.get_surface_color }};
+            --on-surface-color: {{ request.user.theme_colors.get_on_surface_color }};
+            --primary-color: {{ request.user.theme_colors.get_primary_color }};
+            --on-primary-color: {{ request.user.theme_colors.get_on_primary_color }};
+            --secondary-color: {{ request.user.theme_colors.get_secondary_color }};
+            --on-secondary-color: {{ request.user.theme_colors.get_on_secondary_color }};
+            --tertiary-color: {{ request.user.theme_colors.get_tertiary_color }};
+            --on-tertiary-color: {{ request.user.theme_colors.get_on_tertiary_color }};
+            --surface-variant-color: {{ request.user.theme_colors.get_surface_variant_color }};
+            --on-surface-variant-color: {{ request.user.theme_colors.get_on_surface_variant_color }};
+            --outline-color: {{ request.user.theme_colors.get_outline_color }};
+            --error-color: {{ request.user.theme_colors.get_error_color }};
+        }
+    </style>
+    {% else %}
+    <style>
+        :root {
+            --surface-color: {{ default_colors.surface }};
+            --on-surface-color: {{ default_colors.on_surface }};
+            --primary-color: {{ default_colors.primary }};
+            --on-primary-color: {{ default_colors.on_primary }};
+            --secondary-color: {{ default_colors.secondary }};
+            --on-secondary-color: {{ default_colors.on_secondary }};
+            --tertiary-color: {{ default_colors.tertiary }};
+            --on-tertiary-color: {{ default_colors.on_tertiary }};
+            --surface-variant-color: {{ default_colors.surface_variant }};
+            --on-surface-variant-color: {{ default_colors.on_surface_variant }};
+            --outline-color: {{ default_colors.outline }};
+            --error-color: {{ default_colors.error }};
+        }
+    </style>
+    {% endif %}
+
+    <style>
+        .bg-theme-surface { background-color: var(--surface-color); }
+        .bg-theme-primary { background-color: var(--primary-color); }
+        .bg-theme-secondary { background-color: var(--secondary-color); }
+        .bg-theme-tertiary { background-color: var(--tertiary-color); }
+        .bg-theme-surface-variant { background-color: var(--surface-variant-color); }
+        .bg-theme-error { background-color: var(--error-color); }
+        
+        .text-theme-on-surface { color: var(--on-surface-color); }
+        .text-theme-on-primary { color: var(--on-primary-color); }
+        .text-theme-on-secondary { color: var(--on-secondary-color); }
+        .text-theme-on-tertiary { color: var(--on-tertiary-color); }
+        .text-theme-on-surface-variant { color: var(--on-surface-variant-color); }
+        
+        .border-theme-outline { border-color: var(--outline-color); }
+        .border-theme-primary { border-color: var(--primary-color); }
+        .border-theme-secondary { border-color: var(--secondary-color); }
+        .border-theme-tertiary { border-color: var(--tertiary-color); }
+
+        /* Responsive layout styles */
+        @media (min-width: 768px) {
+            .desktop-layout {
+                display: flex;
+                min-height: 100vh;
+                position: relative;
+            }
+
+            .desktop-sidebar {
+                width: 192px;
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                background-color: #111 !important;
+                border-right: 4px solid #000;
+                z-index: 40;
+                overflow-y: auto;
+            }
+
+            .desktop-content {
+                margin-left: 192px;
+                flex: 1;
+                min-height: 100vh;
+                position: relative;
+                z-index: 10;
+            }
+
+            .mobile-footer {
+                display: none;
+            }
+
+            /* Ensure header stays above sidebar */
+            header {
+                z-index: 50;
+                position: sticky;
+                top: 0;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .desktop-sidebar {
+                display: none;
+            }
+
+            .desktop-content {
+                margin-left: 0;
+            }
+
+            .mobile-footer {
+                display: block;
+            }
+
+            /* Add padding to bottom of main content to account for fixed mobile footer */
+            main {
+                padding-bottom: 5rem;
+            }
+        }
+    </style>
+
+    <!-- Pixel Art Theme Styles -->
+    <style>
+        /* Custom styles to blend pixel art with Material 3 dark theme */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212; /* Material 3 dark background */
+            color: #E0E0E0;
+        }
+        .font-pixel {
+            font-family: 'Press Start 2P', cursive;
+        }
+        .pixel-border {
+            border: 4px solid #444;
+            box-shadow: 
+                inset -4px -4px 0px 0px #222,
+                inset 4px 4px 0px 0px #555;
+            image-rendering: pixelated;
+        }
+        .pixel-border-light {
+            border: 4px solid #666;
+            box-shadow: 
+                inset -4px -4px 0px 0px #444,
+                inset 4px 4px 0px 0px #888;
+            image-rendering: pixelated;
+        }
+        .pixel-button {
+            border: 4px solid #333;
+            background-color: #2a2a2a;
+            box-shadow: 
+                inset -4px -4px 0px 0px #1a1a1a,
+                4px 4px 0px 0px #000;
+            transition: all 0.1s ease-in-out;
+        }
+        .pixel-button:active {
+            transform: translate(4px, 4px);
+            box-shadow: inset -2px -2px 0px 0px #1a1a1a;
+        }
+        .nav-icon-active svg {
+             filter: drop-shadow(0 0 5px #00f5d4) drop-shadow(0 0 10px #00f5d4);
+        }
+        .nav-icon-active-desktop {
+            background-color: #2a2a2a;
+            box-shadow: inset 2px 2px 0px 0px #00f5d444;
+        }
+        .pixel-input {
+    -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: 'Press Start 2P', cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important;
+    font-family: 'Press Start 2P', cursive !important;
+    color: #E0E0E0 !important;
+    padding: 0.5rem !important;
+    width: 100% !important;
+    font-size: 12px !important;
+    image-rendering: pixelated;
+    outline: none !important;
+    transition: all 0.1s ease-in-out;
+}
+input.pixel-input:focus {
+    border-color: #00f5d4 !important;
+    box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #00f5d4, 0 0 5px #00f5d4 !important;
+}
+input[type="password"].pixel-input {
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    background-color: #1c1c1c !important;
+    border: 2px solid #444 !important;
+    box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important;
+    font-family: 'Press Start 2P', cursive !important;
+    color: #E0E0E0 !important;
+    padding: 0.5rem !important;
+    width: 100% !important;
+    font-size: 12px !important;
+    image-rendering: pixelated !important;
+    outline: none !important;
+    transition: all 0.1s ease-in-out;
+}
+input[type="password"].pixel-input:focus {
+    border-color: #00f5d4 !important;
+    box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #00f5d4, 0 0 5px #00f5d4 !important;
+}
+
+        /* Ensure navigation backgrounds are completely opaque */
+        .desktop-sidebar nav,
+        header,
+        .mobile-footer nav {
+            background-color: rgba(17, 17, 17, 1) !important;
+        }
+
+        header {
+            background-color: rgba(42, 42, 42, 1) !important;
+        }
+        /* Custom progress bar with pixelated look */
+        progress {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 20px;
+            border: 2px solid #444;
+        }
+        progress::-webkit-progress-bar {
+            background-color: #222;
+        }
+        progress::-webkit-progress-value {
+            background-image:
+               -webkit-linear-gradient(-45deg,
+                                   transparent 33%, rgba(0,0,0,.1) 33%,
+                                   rgba(0,0,0,.1) 66%, transparent 66%),
+               -webkit-linear-gradient(top,
+                                   rgba(255, 255, 255, .25),
+                                   rgba(0, 0, 0, .25)),
+               -webkit-linear-gradient(left, #00f5d4, #00bbf9);
+
+            background-size: 35px 20px, 100% 100%, 100% 100%;
+        }
+    </style>
+
+    {% block head %}
+        {% component_css_dependencies %}
+        {{ component.media.css }}
+    {% endblock head %}
+
+    <style>    
+    /* Custom styles to blend pixel art with Material 3 theme */
+    :root {
+
+        --surface-color: #121212;
+        --surface-variant-color: #2a2a2a;
+        --on-surface-color: #E0E0E0;
+        --on-surface-variant-color: #B0B0B0;
+        --primary-color: #00f5d4;
+        --on-primary-color: #000000;
+        --secondary-color: #00bbf9;
+        --on-secondary-color: #000000;
+        --tertiary-color: #ff6b6b;
+        --on-tertiary-color: #000000;
+        --outline-color: #444;
+        --error-color: #ff4757;
+    }
+
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #121212 !important;
+        color: #E0E0E0;
+    }
+
+    .font-pixel {
+        font-family: 'Press Start 2P', cursive;
+    }       
+    .pixel-border {
+        border: 4px solid #444;
+        box-shadow: 
+            inset -4px -4px 0px 0px #222,
+            inset 4px 4px 0px 0px #555;
+        image-rendering: pixelated;
+    }
+    .pixel-border-light {
+        border: 4px solid #666;
+        box-shadow: 
+            inset -4px -4px 0px 0px #444,
+            inset 4px 4px 0px 0px #888;
+        image-rendering: pixelated;
+    }       
+    .pixel-button {
+        border: 4px solid #333;
+        background-color: #2a2a2a;
+        box-shadow: 
+            inset -4px -4px 0px 0px #1a1a1a,
+            4px 4px 0px 0px #000000;
+        transition: all 0.1s ease-in-out;
+    }
+    .pixel-button:active {
+        transform: translate(4px, 4px); 
+        box-shadow: inset -2px -2px 0px 0px #1a1a1a;        
+    } 
+    html {
+        background-color: #121212 !important;
+    }
+    .nav-icon-active svg {
+         filter: drop-shadow(0 0 5px #00f5d4) drop-shadow(0 0 10px #00f5d4);
+    }
+    .nav-icon-active-desktop {
+        background-color: #2a2a2a;
+        box-shadow: inset 2px 2px 0px 0px #00f5d444;
+    }
+    /* Custom progress bar with pixelated look */
+    progress {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%; 
+        height: 20px;
+        border: 2px solid #444;
+    }
+
+    progress::-webkit-progress-bar {
+        background-color: #222;
+    }
+
+    progress::-webkit-progress-value {
+
+        background-image: linear-gradient(
+                               transparent 33%, rgba(0,0,0,.1) 33%, 
+                               rgba(0,0,0,.1) 66%, transparent 66%),
+                           linear-gradient(top, 
+                               rgba(255, 255, 255, .25),
+                               rgba(0, 0, 0, .25) ),
+                           linear-gradient(left, #00f5d4, #00bbf9);
+
+        background-size: 35px 20px, 100% 100%, 100% 100%; 
+    }    
+</style>
+
+    <!-- Service Worker and PWA Installation -->
+    <script>
+        // Debug PWA state
+        console.log('[PWA] Starting initialization');
+        
+        // PWA Installation
+        window.deferredPrompt = null;
+
+        // Handle installation prompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('[PWA] Received beforeinstallprompt event');
+            e.preventDefault();
+            window.deferredPrompt = e;
+            console.log('[PWA] Install prompt ready');
+        });
+
+        // Initialize PWA
+        if ('serviceWorker' in navigator) {
+            console.log('[PWA] Service Worker is supported');
+            navigator.serviceWorker.register('/sw.js', { 
+                scope: '/',
+                updateViaCache: 'none'
+            })
+            .then(registration => {
+                console.log('[PWA] ServiceWorker registered');
+                
+                // Check for updates
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    console.log('[PWA] New service worker state:', newWorker.state);
+                    
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('[PWA] New content available');
+                        }
+                    });
+                });
+            })
+            .catch(error => console.error('[PWA] ServiceWorker registration failed:', error));
+        } else {
+            console.log('[PWA] Service Worker is not supported');
+        }
+    </script>
+
+    {% block extra_head %}{% endblock extra_head %}
+</head>
+<body class="bg-theme-surface">
+    <div class="desktop-layout min-h-screen">
+        {% component "sidebar_bottom_nav" %}{% endcomponent %}
+        <!-- Main Content Area -->
+        <div class="desktop-content flex flex-col min-h-screen">
+            <header class="sticky top-0 z-50 border-b-4 border-black" style="background-color: #2a2a2a !important;">
+                {% block top_bar_content %}
+                    <div class="p-2 flex justify-between items-center flex-shrink-0 md:justify-end">
+                        <h1 class="font-pixel text-lg text-white tracking-wider md:hidden">FLEXIN.GG</h1>
+                        <div class="flex items-center space-x-3">
+                            <div class="flex items-center">
+                                <!-- Coin Icon -->
+                                {% component "coins" %}{% endcomponent %}
+                            </div>
+                            <!-- Notification Icon -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M4 14V8h1v6H4zm7 0h2V8H4v3zm1-1h6v1H5v-1z"/><path d="M2 5V2h12v3H2zm1-1h10V3H3v1z"/><path d="M5 11h2V8H5v3zm4 0h2V8H9v3z"/></svg>
+                        </div>
+                    </div>
+                {% endblock %}
+            </header>
+
+            <main class="flex-1 overflow-y-auto">
+                {% if messages %}
+                    <div class="p-4">
+                        {% for message in messages %}
+                        <div x-data="{ show: true }"
+                                x-show="show"
+                                x-init="setTimeout(() => show = false, 2000)"
+                                x-transition:enter="transition ease-out duration-300"
+                                x-transition:enter-start="opacity-0 transform scale-90"
+                                x-transition:enter-end="opacity-100 transform scale-100"
+                                x-transition:leave="transition ease-in duration-300"
+                                x-transition:leave-start="opacity-100 transform scale-100"
+                                x-transition:leave-end="opacity-0 transform scale-90"
+                                class="rounded-lg bg-theme-surface-variant text-theme-on-surface-variant border border-theme-outline p-4 mb-4">
+                            {{ message }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <div class="px-0">
+                    {% block content %}{% endblock content %}
+                </div>
+            </main>
+
+        </div>
+    </div>
+
+    {{ component.media.js }}
+    {% block scripts %}{% endblock scripts %}
+</body>
+</html>

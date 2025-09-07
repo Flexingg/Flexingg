@@ -1,0 +1,54 @@
+/* Custom Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 28px;
+}
+
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #333;
+    -webkit-transition: none;
+    transition: none;
+    border: 2px solid #555;
+    border-radius: 0;
+    image-rendering: pixelated;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #888;
+    -webkit-transition: none;
+    transition: none;
+    border: 2px solid #555;
+    border-radius: 0;
+    image-rendering: pixelated;
+}
+
+input:checked + .slider {
+    background-color: #00f5d4;
+}
+
+input:checked + .slider:before {
+    -webkit-transform: translateX(32px);
+    -ms-transform: translateX(32px);
+    transform: translateX(32px);
+    background-color: white;
+}

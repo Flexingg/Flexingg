@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=flexingg_db
+      - POSTGRES_USER=flexingg_user
+      - POSTGRES_PASSWORD=flexingg_pass
+    ports:
+      - "5432:5432"
+
+  web:
+    build: .
+    command: >
+      sh -c "cd Flexingg &&
+             python manage.py makemigrations &&
+             python manage.py migrate &&
+             gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application"
+    volumes:
+      - .:/app
+    ports:
+      - "1234:8000"
+    environment:
+      - DB_NAME=flexingg_db
+      - DB_USER=flexingg_user
+      - DB_PASSWORD=flexingg_pass
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

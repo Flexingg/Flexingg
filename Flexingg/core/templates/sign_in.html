@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load component_tags %}
+
+{% block title %}Flexin.gg - Log In{% endblock %}
+
+{% block head %}
+<style>
+.custom-sidebar {
+    display: none !important;
+}
+.desktop-content {
+    margin-left: 0 !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-md">
+        <!-- Logo Header -->
+        <h1 class="font-pixel text-3xl md:text-4xl text-white tracking-wider text-center mb-6">FLEXIN.GG</h1>
+
+        <!-- Log In Card -->
+        <div class="pixel-border bg-[#1c1c1c] p-6 md:p-8">
+            <h2 class="font-pixel text-lg text-center text-[#00f5d4] mb-6">LOG IN</h2>
+            
+            <form method="post" action="{% url 'fitness:sign_in' %}" class="space-y-6">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="text-red-500">{{ form.non_field_errors }}</div>
+                {% endif %}
+                <!-- Username Input -->
+                <div>
+                    <label class="font-pixel text-sm text-gray-400 block mb-2">Gamertag</label>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                        <div class="text-red-500 text-sm">{{ form.username.errors }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Password Input -->
+                <div>
+                    <label class="font-pixel text-sm text-gray-400 block mb-2">PASSWORD</label>
+                    {{ form.password }}
+                    {% if form.password.errors %}
+                        <div class="text-red-500 text-sm">{{ form.password.errors }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Submit Button -->
+                <div>
+                    <button type="submit" class="pixel-button w-full p-4 font-pixel text-green-400 text-sm mt-4">LOG IN</button>
+                </div>
+            </form>
+
+            <!-- Sign Up Link -->
+            <div class="text-center mt-6">
+                <a href="{% url 'fitness:sign_up' %}" class="text-sm text-gray-400 hover:text-white hover:underline">
+                    Don't have an account? <span class="font-pixel text-cyan-300">CREATE ONE</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

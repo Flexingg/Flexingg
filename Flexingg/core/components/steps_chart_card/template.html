@@ -1,0 +1,251 @@
+{% load static %}
+
+<div class="bg-theme-surface-variant rounded-lg shadow-md p-6 mb-8">
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-semibold text-theme-on-surface">Steps</h2>
+        <div class="flex items-center space-x-4">
+            <button type="button"
+                    class="info-button text-theme-on-surface-variant hover:text-theme-on-surface transition-colors"
+                    data-description="Daily step count tracked from Garmin Connect. Shows cumulative steps over the selected time period with friend comparisons.">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                </svg>
+            </button>
+            <select id="stepsRange" class="bg-theme-surface-variant text-theme-on-surface-variant px-3 py-1 rounded text-sm">
+                <option value="current_month" selected>This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="last_3_months">Last 3 Months</option>
+                <option value="last_year">Last Year</option>
+                <option value="alltime">All Time</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Chart Container -->
+    <div class="h-64">
+        <canvas id="stepsChart"></canvas>
+    </div>
+
+    <!-- Podium Section -->
+    <div id="stepsPodiumSection" class="mt-6 pt-6 border-t border-theme-outline" style="display: none;">
+        <h3 class="text-lg font-semibold text-theme-on-surface mb-4">Leaderboard</h3>
+        <div class="flex justify-center items-end space-x-4">
+            <!-- 2nd Place -->
+            <div id="stepsSecondPlace" class="text-center" style="display: none;">
+                <div class="w-16 h-20 bg-theme-secondary rounded-t-lg flex items-end justify-center pb-2 border-2 border-slate-500">
+                    <span class="text-2xl">🥈</span>
+                </div>
+                <p class="text-sm text-theme-on-surface mt-2" id="stepsSecondPlaceName">-</p>
+                <p class="text-xs text-theme-on-surface" id="stepsSecondPlaceSteps">-</p>
+            </div>
+
+            <!-- 1st Place -->
+            <div id="stepsFirstPlace" class="text-center" style="display: none;">
+                <div class="w-20 h-24 bg-theme-primary rounded-t-lg flex items-end justify-center pb-2">
+                    <span class="text-3xl">🥇</span>
+                </div>
+                <p class="text-sm font-semibold text-theme-on-surface mt-2" id="stepsFirstPlaceName">-</p>
+                <p class="text-xs text-theme-on-surface" id="stepsFirstPlaceSteps">-</p>
+            </div>
+
+            <!-- 3rd Place -->
+            <div id="stepsThirdPlace" class="text-center" style="display: none;">
+                <div class="w-16 h-16 bg-theme-tertiary rounded-t-lg flex items-end justify-center pb-2 border-2 border-amber-700">
+                    <span class="text-2xl">🥉</span>
+                </div>
+                <p class="text-sm text-theme-on-surface mt-2" id="stepsThirdPlaceName">-</p>
+                <p class="text-xs text-theme-on-surface" id="stepsThirdPlaceSteps">-</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-6 border-t border-theme-outline">
+        <div>
+            <p class="text-theme-on-surface-variant text-sm">Your Total</p>
+            <p class="text-2xl font-bold text-theme-on-surface" id="userTotalSteps">-</p>
+        </div>
+        <div>
+            <p class="text-theme-on-surface-variant text-sm">Friends Average</p>
+            <p class="text-2xl font-bold text-theme-on-surface" id="friendsAverageSteps">-</p>
+        </div>
+        <div>
+            <p class="text-theme-on-surface-variant text-sm">Your Rank</p>
+            <p class="text-2xl font-bold text-theme-on-surface" id="userRankSteps">-</p>
+        </div>
+    </div>
+
+    <!-- Sentence Section -->
+    <div class="mt-6 pt-6 border-t border-theme-outline">
+        <p class="text-theme-on-surface text-sm italic" id="stepsSentence">Loading...</p>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const stepsRange = document.getElementById('stepsRange');
+        let chart = null;
+
+        function updateChart(range) {
+            fetch(`{% url 'fitness:steps-chart-data' %}?range=${range}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (chart) {
+                        chart.destroy();
+                    }
+                    initializeChart(data);
+                    updatePodium(data.podium_data);
+                    updateStats(data.stats);
+                })
+                .catch(error => {
+                    console.error('Error fetching steps data:', error);
+                });
+        }
+
+        function initializeChart(data) {
+            const ctx = document.getElementById('stepsChart').getContext('2d');
+            const datasets = [];
+
+            // Add user's dataset
+            if (data.user_data && data.user_data.length > 0) {
+                datasets.push({
+                    label: 'You',
+                    data: data.user_data.map(point => ({
+                        x: new Date(point.date),
+                        y: point.steps
+                    })),
+                    borderColor: getComputedStyle(document.documentElement)
+                        .getPropertyValue('--theme-primary').trim(),
+                    backgroundColor: 'transparent',
+                    borderWidth: 3,
+                    tension: 0.4
+                });
+            }
+
+            // Add friends' datasets
+            if (data.friends_data) {
+                data.friends_data.forEach((friend, index) => {
+                    if (friend.data && friend.data.length > 0) {
+                        // Generate random color for each friend
+                        const hue = (index * 137.5) % 360; // Use golden angle for good distribution
+                        const saturation = 70 + Math.random() * 20; // 70-90%
+                        const lightness = 50 + Math.random() * 20; // 50-70%
+                        const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+
+                        datasets.push({
+                            label: friend.name,
+                            data: friend.data.map(point => ({
+                                x: new Date(point.date),
+                                y: point.steps
+                            })),
+                            borderColor: color,
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            tension: 0.4
+                        });
+                    }
+                });
+            }
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement)
+                                    .getPropertyValue('--theme-outline').trim()
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Steps'
+                            },
+                            grid: {
+                                color: getComputedStyle(document.documentElement)
+                                    .getPropertyValue('--theme-outline').trim()
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} steps`;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updatePodium(podiumData) {
+            const podiumSection = document.getElementById('stepsPodiumSection');
+            const firstPlace = document.getElementById('stepsFirstPlace');
+            const secondPlace = document.getElementById('stepsSecondPlace');
+            const thirdPlace = document.getElementById('stepsThirdPlace');
+
+            if (podiumData && podiumData.length >= 1) {
+                podiumSection.style.display = 'block';
+
+                // 1st place
+                if (podiumData[0]) {
+                    firstPlace.style.display = 'block';
+                    document.getElementById('stepsFirstPlaceName').textContent = podiumData[0].name;
+                    document.getElementById('stepsFirstPlaceSteps').textContent = `${podiumData[0].steps} steps`;
+                }
+
+                // 2nd place
+                if (podiumData[1]) {
+                    secondPlace.style.display = 'block';
+                    document.getElementById('stepsSecondPlaceName').textContent = podiumData[1].name;
+                    document.getElementById('stepsSecondPlaceSteps').textContent = `${podiumData[1].steps} steps`;
+                }
+
+                // 3rd place
+                if (podiumData[2]) {
+                    thirdPlace.style.display = 'block';
+                    document.getElementById('stepsThirdPlaceName').textContent = podiumData[2].name;
+                    document.getElementById('stepsThirdPlaceSteps').textContent = `${podiumData[2].steps} steps`;
+                }
+            } else {
+                podiumSection.style.display = 'none';
+            }
+        }
+
+        function updateStats(stats) {
+            document.getElementById('userTotalSteps').textContent =
+                stats.user_total ? `${stats.user_total} steps` : '-';
+            document.getElementById('friendsAverageSteps').textContent =
+                stats.friends_average ? `${Math.round(stats.friends_average)} steps` : '-';
+            document.getElementById('userRankSteps').textContent =
+                stats.user_rank ? `#${stats.user_rank}` : '-';
+            document.getElementById('stepsSentence').textContent =
+                stats.sentence || 'No steps data available';
+        }
+
+        stepsRange.addEventListener('change', function() {
+            updateChart(this.value);
+        });
+
+        // Initial load
+        updateChart(stepsRange.value);
+    });
+</script>
