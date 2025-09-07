@@ -9,10 +9,11 @@ urlpatterns = [
     path('sign-in/', SignInView.as_view(), name='sign_in'),
     path('sign-out/', SignOutView.as_view(), name='sign_out'),
     path('settings/', SettingsView.as_view(), name='settings'),
-
     
     path('sync-garmin/', SyncGarminView.as_view(), name='sync_garmin'),
     path('background-garmin-sync/', BackgroundGarminSyncView.as_view(), name='background_garmin_sync'),
+    path('connect-garmin/', ConnectGarminView.as_view(), name='connect_garmin'),
+    path('disconnect-garmin/', DisconnectGarminView.as_view(), name='disconnect_garmin'),
     path('steps-chart-data/', StepsChartDataView.as_view(), name='steps_chart_data'),
 
     # Calories Chart Data URL

@@ -1,6 +1,6 @@
 import logging
-logger = logging.getLogger(__name__)
-
+import uuid
+from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import ListView, TemplateView, View, DetailView
 from django.utils import timezone
@@ -18,7 +18,8 @@ User = get_user_model()
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
 from django.utils import html
-
+from .forms import GarminConnectForm
+from .models import Garmin_Auth, UserProfile
 
 
 class HomeView(TemplateView):  
@@ -32,9 +33,7 @@ class HomeView(TemplateView):
             context['total_gems'] = profile.gym_gems
             context['total_coins'] = profile.cardio_coins
             context['level'] = profile.level
-        return context 
-
-
+        return context  
 
 class SignUpView(View): 
     template_name = 'sign_up.html'
@@ -42,18 +41,18 @@ class SignUpView(View):
 
     def get(self, request): 
         if request.user.is_authenticated:
-            return redirect('fitness:home')
+            return redirect('fitness:home') 
         form = self.form_class()
         return render(request, self.template_name, {'form': form})
 
     def post(self, request): 
-        if request.user.is_authenticated: 
+        if request.user.is_authenticated:
             return redirect('fitness:home') 
         form = self.form_class(request.POST) 
         if form.is_valid():  
             form.save()
             return redirect('fitness:sign_in') 
-        return render(request, self.template_name, {'form': form})
+        return render(request, self.template_name, {'form': form})  
 
 
 class SignInView(View): 
@@ -74,16 +73,16 @@ class SignInView(View):
             username = form.cleaned_data.get('username')
             password = form.cleaned_data.get('password')
             user = authenticate(request, username=username, password=password) 
-            if user is not None:
+            if user is not None: 
                 login(request, user)
                 return redirect('fitness:home') 
-        return render(request, self.template_name, {'form': form})
+        return render(request, self.template_name, {'form': form}) 
 
 
 class SignOutView(View): 
-    def get(self, request):
+    def get(self, request): 
         logout(request)
-        return redirect('fitness:sign_in')
+        return redirect('fitness:sign_in')  
 
 
 class SyncGarminView(TemplateView):   # Create this template later if needed 
@@ -113,7 +112,7 @@ class StepsChartDataView(View):
                 'user_data': [{'date': '2024-09-01', 'steps': 10000}, {'date': '2024-09-02', 'steps': 12000},            # Add more dummy data
                 ] 
             }
-            return JsonResponse(data)
+            return JsonResponse(data) 
         return JsonResponse({'error': 'Authentication required'}, status=401)
 
 
@@ -157,39 +156,39 @@ class SettingsView(View):
         context = {'form': form, 'profile': request.user}
         return render(request, self.template_name, context)
 
-
-def get_calories_chart_data(request):  
-    logger.info(f"Calories chart data access - User authenticated: {request.user.is_authenticated}, Type: {type(request.user)}")
+def get_calories_chart_data(request):
     """API endpoint for calories chart data with friends' data and podium rankings"""
-    
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
     # Get the requested range (default to current_month)
     range_param = request.GET.get('range', 'current_month')
-    
+
     # Calculate date range based on the requested period
     today = timezone.now().date()
-    if range_param == 'current_month': 
+    if range_param == 'current_month':
         start_date = today.replace(day=1)
         end_date = today
-    elif range_param == 'last_month': 
+    elif range_param == 'last_month':
         # Get last month
-        first_of_this_month = today.replace(day=1) 
-        last_of_last_month = first_of_this_month - timedelta(days=1) 
+        first_of_this_month = today.replace(day=1)
+        last_of_last_month = first_of_this_month - timedelta(days=1)
         start_date = last_of_last_month.replace(day=1)
         end_date = last_of_last_month
     elif range_param == 'last_3_months':
         # Last 3 months including current
         start_date = (today.replace(day=1) - timedelta(days=60)).replace(day=1)
         end_date = today
-    elif range_param == 'last_year': 
+    elif range_param == 'last_year':
         # Last year
-        start_date = today.replace(year=today.year - 1, month=1, day=1) 
+        start_date = today.replace(year=today.year - 1, month=1, day=1)
         end_date = today
-    elif range_param == 'alltime': 
+    elif range_param == 'alltime':
         # All time
-        start_date = date(2000, 1, 1) 
+        start_date = date(2000, 1, 1)
         end_date = today
     else:  # Default to current month
-        start_date = today.replace(day=1) 
+        start_date = today.replace(day=1)
         end_date = today
 
     # Get user's calories data
@@ -201,36 +200,26 @@ def get_calories_chart_data(request):
 
     # Aggregate user calories by date
     user_calories_by_date = {}
-    for activity in user_activities: 
-        date_key = activity.start_time_utc.date().isoformat() 
+    for activity in user_activities:
+        date_key = activity.start_time_utc.date().isoformat()
         user_calories_by_date[date_key] = user_calories_by_date.get(date_key, 0) + (activity.calories or 0)
 
     # Make user data cumulative
     cumulative_calories = 0
-    user_data = [] ###################################################
+    user_data = []
     current_date = start_date
-    while current_date <= end_date:    ## Cannot use a comprehension 
-        date_key = current_date.isoformat()  ### here as below
+    while current_date <= end_date:
+        date_key = current_date.isoformat()
         daily_calories = user_calories_by_date.get(date_key, 0)
         cumulative_calories += daily_calories
-        user_data.append({'date': date_key, 'calories': cumulative_calories})    
+        user_data.append({'date': date_key, 'calories': cumulative_calories})
         current_date += timedelta(days=1)
-    friends_data = []
-    all_users_calories = []  # For podium ranking
 
-    # Add user's total for ranking
-    user_total_calories = sum(activity.calories or 0 for activity in user_activities)
-    if user_total_calories > 0: 
-        all_users_calories.append({
-            'user_id': request.user.id,
-            'name': request.user.username,
-            'calories': user_total_calories
-        })        
     # Get friends' data
     friendships_as_from = Friendship.objects.filter(
         from_user=request.user,
         status='accepted'
-    ).values_list('to_user', flat=True) #
+    ).values_list('to_user', flat=True)
 
     friendships_as_to = Friendship.objects.filter(
         to_user=request.user,
@@ -238,8 +227,105 @@ def get_calories_chart_data(request):
     ).values_list('from_user', flat=True)
 
     friend_user_ids = list(friendships_as_from) + list(friendships_as_to)
+
     friends_data = []
-    all_users_calories = []
+    all_users_calories = []  # For podium ranking
+
+    # Add user's total for ranking
+    user_total_calories = sum(activity.calories or 0 for activity in user_activities)
+    if user_total_calories > 0:
+        all_users_calories.append({
+            'user_id': request.user.id,
+            'name': request.user.username,
+            'calories': user_total_calories
+        })
+
+    # Get friends' data
+    for friend_id in friend_user_ids:
+        try:
+            friend = User.objects.get(id=friend_id)
+            friend_activities = GarminActivity.objects.filter(
+                user=friend,
+                start_time_utc__date__range=[start_date, end_date],
+                calories__isnull=False
+            ).exclude(calories=0)
+
+            friend_calories_by_date = {}
+            for activity in friend_activities:
+                date_key = activity.start_time_utc.date().isoformat()
+                friend_calories_by_date[date_key] = friend_calories_by_date.get(date_key, 0) + (activity.calories or 0)
+
+            # Always include friends, even if they have no data (they'll show as flat line at 0)
+            # Make friend data cumulative with all days in range
+            cumulative_calories = 0
+            friend_data = []
+            current_date = start_date
+            while current_date <= end_date:
+                date_key = current_date.isoformat()
+                daily_calories = friend_calories_by_date.get(date_key, 0)
+                cumulative_calories += daily_calories
+                friend_data.append({'date': date_key, 'calories': cumulative_calories})
+                current_date += timedelta(days=1)
+
+            friends_data.append({
+                'name': friend.username,
+                'data': friend_data
+            })
+
+            # Add to ranking (only if they have activities)
+            friend_total = sum(activity.calories or 0 for activity in friend_activities)
+            if friend_total > 0:
+                all_users_calories.append({
+                    'user_id': friend.id,
+                    'name': friend.username,
+                    'calories': friend_total
+                })
+
+        except User.DoesNotExist:
+            continue
+
+    # Calculate podium rankings
+    all_users_calories.sort(key=lambda x: x['calories'], reverse=True)
+    podium_data = []
+    for i, user_info in enumerate(all_users_calories[:3]):
+        podium_data.append({
+            'name': user_info['name'],
+            'calories': int(user_info['calories'])
+        })
+
+    # Calculate stats - get the final cumulative value for each friend
+    friends_totals = []
+    for friend_data in friends_data:
+        if friend_data['data']:
+            # Get the last (most recent) cumulative value
+            final_value = friend_data['data'][-1]['calories']
+            friends_totals.append(final_value)
+    friends_average = sum(friends_totals) / len(friends_totals) if friends_totals else 0
+
+    # Find user's rank
+    user_rank = None
+    for i, user_info in enumerate(all_users_calories):
+        if user_info['user_id'] == request.user.id:
+            user_rank = i + 1
+            break
+
+    stats = {
+        'user_total': int(user_total_calories),
+        'friends_average': int(friends_average) if friends_average else 0,
+        'user_rank': user_rank,
+        'sentence': 'relate_calories(int(user_total_calories))' if user_total_calories > 0 else "No calories burned yet!"
+    }
+
+    return JsonResponse({
+        'user_data': user_data,
+        'friends_data': friends_data,
+        'podium_data': podium_data,
+        'stats': stats,
+        'date_range': {
+            'start': start_date.isoformat(),
+            'end': end_date.isoformat()
+        }
+    })
 
 def get_steps_chart_data(request):
     """API endpoint for steps chart data with friends' data and podium rankings"""
@@ -411,44 +497,6 @@ def get_steps_chart_data(request):
     })
 
 
-def calculate_sweat_score(activity, weights_dict):  
-    """ 
-    Calculate sweat score for a single activity based on HR zones and weights.
-    Returns the calculated score or fallback value.
-    """ 
-    # Try to get HR zone data from raw_data
-    if activity.raw_data and 'hrTimeInZone' in activity.raw_data:  
-        hr_zones = activity.raw_data['hrTimeInZone']
-
-        # Extract time in each zone (convert from seconds to minutes)
-        t1 = hr_zones.get('hrTimeInZone_1', 0) / 60  # Zone 1
-        t2 = hr_zones.get('hrTimeInZone_2', 0) / 60  # Zone 2
-        t3 = hr_zones.get('hrTimeInZone_3', 0) / 60  # Zone 3
-        t4 = hr_zones.get('hrTimeInZone_4', 0) / 60  # Zone 4
-        t5 = hr_zones.get('hrTimeInZone_5', 0) / 60  # Zone 5
-
-        # Calculate T0 (time below zone 1)
-        total_duration = (activity.duration_seconds or 0) / 60  # Convert to minutes
-        t0 = max(0, total_duration - (t1 + t2 + t3 + t4 + t5))
-
-        # Calculate score using weights
-        score = (
-            (t0 * float(weights_dict.get(0, 1))) +
-            (t1 * float(weights_dict.get(1, 2))) +
-            (t2 * float(weights_dict.get(2, 3))) +
-            (t3 * float(weights_dict.get(3, 5))) +
-            (t4 * float(weights_dict.get(4, 8))) +
-            (t5 * float(weights_dict.get(5, 12)))
-        )
-
-        return score
-    else:
-        # Fallback: use calories / 2
-        if activity.calories:
-            return activity.calories / 2
-        return 0
-
-
 def get_sweat_score_chart_data(request):  
     """API endpoint for sweat score chart data with friends' data and podium rankings"""
     if not request.user.is_authenticated:
@@ -458,29 +506,29 @@ def get_sweat_score_chart_data(request):
     range_param = request.GET.get('range', 'current_month')
 
     # Calculate date range based on the requested period
-    today = timezone.now().date()   
+    today = timezone.now().date()
     if range_param == 'current_month':
-        start_date = today.replace(day=1)   
-        end_date = today        
-    elif range_param == 'last_month': 
+        start_date = today.replace(day=1)
+        end_date = today
+    elif range_param == 'last_month':
         # Get last month
-        first_of_this_month = today.replace(day=1) 
+        first_of_this_month = today.replace(day=1)
         last_of_last_month = first_of_this_month - timedelta(days=1) 
-        start_date = last_of_last_month.replace(day=1)	
+        start_date = last_of_last_month.replace(day=1)
         end_date = last_of_last_month
-    elif range_param == 'last_3_months': 
+    elif range_param == 'last_3_months':
         # Last 3 months including current
-        start_date = (today.replace(day=1) - timedelta(days=60)).replace(day=1)   	
+        start_date = (today.replace(day=1) - timedelta(days=60)).replace(day=1)
         end_date = today
-    elif range_param == 'last_year': 
+    elif range_param == 'last_year':
         # Last year
-        start_date = today.replace(year=today.year - 1, month=1, day=1)  
+        start_date = today.replace(year=today.year - 1, month=1, day=1) 
         end_date = today
-    elif range_param == 'alltime': 
+    elif range_param == 'alltime':
         # All time
-        start_date = date(2000, 1, 1)  
+        start_date = date(2000, 1, 1)
         end_date = today
-    else:  # Default to current month  
+    else:  # Default to current month
         start_date = today.replace(day=1)
         end_date = today
 
@@ -507,10 +555,10 @@ def get_sweat_score_chart_data(request):
 
     # Make user data cumulative
     cumulative_score = 0
-    user_data = []        
+    user_data = []
     current_date = start_date
     while current_date <= end_date:    
-        date_key = current_date.isoformat() 
+        date_key = current_date.isoformat()
         daily_score = user_scores_by_date.get(date_key, 0)
         cumulative_score += daily_score
         user_data.append({'date': date_key, 'score': cumulative_score})
@@ -535,12 +583,12 @@ def get_sweat_score_chart_data(request):
 
     # Add user's total for ranking
     user_total_score = sum(calculate_sweat_score(activity, weights_dict) for activity in user_activities)
-    if user_total_score > 0:
+    if user_total_score > 0: 
         all_users_scores.append({'user_id': request.user.id, 'name': request.user.username, 'score': user_total_score})
 
 
     # Get friends' data
-    for friend_id in friend_user_ids: 
+    for friend_id in friend_user_ids:
         try:
             friend = User.objects.get(id=friend_id)
             friend_activities = GarminActivity.objects.filter(
@@ -557,14 +605,14 @@ def get_sweat_score_chart_data(request):
             # Always include friends, even if they have no data (they'll show as flat line at 0)
             # Make friend data cumulative with all days in range
             cumulative_score = 0
-            friend_data = []            
+            friend_data = []
             current_date = start_date
-            while current_date <= end_date: 
-                date_key = current_date.isoformat() 
-                daily_score = friend_scores_by_date.get(date_key, 0) 
-                cumulative_score += daily_score 
-                friend_data.append({'date': date_key, 'score': cumulative_score}) 
-                current_date += timedelta(days=1)            
+            while current_date <= end_date:
+                date_key = current_date.isoformat()
+                daily_score = friend_scores_by_date.get(date_key, 0)
+                cumulative_score += daily_score
+                friend_data.append({'date': date_key, 'score': cumulative_score})
+                current_date += timedelta(days=1)
             friends_data.append({ 
                 'name': friend.username, 
                 'data': friend_data 
@@ -582,6 +630,7 @@ def get_sweat_score_chart_data(request):
     # Calculate podium rankings
     all_users_scores.sort(key=lambda x: x['score'], reverse=True)
     podium_data = []
+
     for i, user_info in enumerate(all_users_scores[:3]): 
         podium_data.append({'name': user_info['name'], 'score': int(user_info['score'])})
 
@@ -589,7 +638,7 @@ def get_sweat_score_chart_data(request):
     # Calculate stats - get the final cumulative value for each friend
     friends_totals = []
     for friend_data in friends_data: 
-        if friend_data['data']: 
+        if friend_data['data']:
             # Get the last (most recent) cumulative value
             final_value = friend_data['data'][-1]['score'] 
             friends_totals.append(final_value)
@@ -602,6 +651,7 @@ def get_sweat_score_chart_data(request):
         if user_info['user_id'] == request.user.id: 
             user_rank = i + 1
             break
+
 
     stats = {
         'user_total': int(user_total_score),
@@ -616,6 +666,63 @@ def get_sweat_score_chart_data(request):
         'stats': stats,
         'date_range': {
             'start': start_date.isoformat(),
-            'end': end_date.isoformat()
+            'end': end_date.isoformat()  
         }
-    })
+    })  
+
+
+
+
+
+
+class ConnectGarminView(View):
+    template_name = 'settings.html'
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return redirect('fitness:sign_in')
+        
+        form = GarminConnectForm(request.POST)
+        if form.is_valid():
+            garmin_email = form.cleaned_data['garmin_email']
+            # Do not store password
+            
+            # Dummy tokens for simulation
+            oauth_token = "dummy_oauth_token_" + str(timezone.now().timestamp())
+            access_token = "dummy_access_" + str(uuid.uuid4())
+            refresh_token = "dummy_refresh_" + str(uuid.uuid4())
+            
+            # Create or update Garmin_Auth
+            garmin_auth, created = Garmin_Auth.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    'oauth_token': oauth_token,
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'garmin_email': garmin_email,
+                    'token_type': 'Bearer',
+                    'expires_in': 3600,
+                    'expires_at': int(timezone.now().timestamp()) + 3600,
+                    'refresh_token_expires_in': 10000,
+                    'refresh_token_expires_at': int(timezone.now().timestamp()) + 10000,
+                    'last_sync': timezone.now(),
+                }
+            )
+            
+            messages.success(request, 'Garmin Connect connected successfully!')
+            return redirect('fitness:settings')
+        else:
+            context = {'form': ProfileForm(instance=request.user), 'profile': request.user, 'garmin_form': form}
+            return render(request, self.template_name, context)
+
+class DisconnectGarminView(View):
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return redirect('fitness:sign_in')
+        
+        garmin_auth = Garmin_Auth.objects.filter(user=request.user).first()
+        if garmin_auth:
+            garmin_auth.delete()
+            messages.success(request, 'Garmin Connect disconnected successfully!')
+        
+        return redirect('fitness:settings')
