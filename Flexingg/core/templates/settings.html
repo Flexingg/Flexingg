@@ -4,7 +4,7 @@
 {% block title %}Flexin.gg - Settings{% endblock title %}
 
 {% block top_bar_content %}
-<header class="p-4 flex justify-between items-center bg-[#2a2a2a] border-b-4 border-black flex-shrink-0">
+<header class="p-4 flex justify-between items-center bg-[#2a2a2a] border-b-4 border-black flex-shrink-0 bg-gradient-to-r from-[#2a2a2a] via-[#2a2a2a]/20 to-[#2a2a2a]">
     <h1 class="font-pixel text-2xl text-white tracking-wider">SETTINGS</h1>
     <div class="flex items-center space-x-3">
         <div class="flex items-center">
@@ -17,35 +17,34 @@
 
 {% block content %}
 <main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+
     <!-- Profile Settings -->
     <section>
         <h3 class="font-pixel text-lg text-[#00f5d4]">PROFILE</h3>
         <form method="post">
             {% csrf_token %}
             {% component "profile_section" profile=profile form=form %}{% endcomponent %}
+            {% component "account_section" profile=profile form=form %}{% endcomponent %}
+
+            <!-- Action Buttons -->
+            <section class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4"/>
+                {% component "save_logout_buttons" %}{% endcomponent %}
+            </section>
         </form>
     </section>
 
-    <!-- Account Settings -->
-    <section><h3 class="font-pixel text-lg text-yellow-300">ACCOUNT</h3>
-        {% component "account_section" profile=profile %}{% endcomponent %}
-    </section>
-    
     <!-- Notifications -->
     <section>
         <h3 class="font-pixel text-lg text-cyan-300">NOTIFICATIONS</h3>
         {% component "notifications_section" %}{% endcomponent %}
     </section>
-
+    
     <!-- Integrations -->
     <section>
         <h3 class="font-pixel text-lg text-purple-400">INTEGRATIONS</h3>
         {% component "integrations_section" %}{% endcomponent %}
     </section>
 
-    <!-- Action Buttons -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4"/>
-        {% component "save_logout_buttons" %}{% endcomponent %}
-    </section>
 </main>
 {% endblock content %}
+
