@@ -16,7 +16,7 @@
                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">ft</span>
                 </div>
                 <div class="relative w-full">
-                    {{ form.height_in }}
+                    {{ form.height_inches }}
                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">in</span>
                 </div>
             </div>
@@ -25,7 +25,7 @@
             <label class="font-pixel text-sm text-gray-400">WEIGHT</label>
             <div class="flex items-center space-x-2 mt-1">
                 {{ form.weight }}
-                <select class="pixel-select w-24 flex-shrink-0">
+                <select class="pixel-select w-24 flex-shrink-0" style="background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: &quot;Press Start 2P&quot;, cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;">
                     <option selected>lbs</option>
                     <option>kg</option>
                 </select>
