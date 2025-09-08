@@ -30,28 +30,5 @@ services:
     depends_on:
       - db
 
-  hc_api:
-    image: ghcr.io/shuchirj/hcgateway:latest
-    ports:
-      - "1235:6644"
-    env_file:
-      - ./HCGateway/api/.env
-    container_name: hcgateway_api
-    restart: always
-    volumes:
-      - ./HCGateway/api/service-account.json:/app/service-account.json
-
-  hcgateway_db:
-    image: mongo
-    restart: always
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./HCGateway/db:/data/db
-    container_name: hcgateway_db
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: flexingg
-      MONGO_INITDB_ROOT_PASSWORD: flexingg
-
 volumes:
   postgres_data:
