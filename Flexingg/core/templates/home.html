@@ -1,28 +1,29 @@
 {% extends "base.html" %}
 {% load component_tags %}
 {% load fitness_filters %}
+{% load humanize %}
 
 {% block title %}Fitness Dashboard{% endblock %}
 
 {% block extra_css %}
 
 
-<style>    
+<style>
     /* Custom styles to blend pixel art with Material 3 theme */
     :root {
 
-        --surface-color: #121212;
-        --surface-variant-color: #2a2a2a;
-        --on-surface-color: #E0E0E0;
-        --on-surface-variant-color: #B0B0B0;
-        --primary-color: #00f5d4;
-        --on-primary-color: #000000;
-        --secondary-color: #00bbf9;
-        --on-secondary-color: #000000;
-        --tertiary-color: #ff6b6b;
-        --on-tertiary-color: #000000;
-        --outline-color: #444;
-        --error-color: #ff4757;
+        --theme-surface: #121212;
+        --theme-surface-variant: #2a2a2a;
+        --theme-on-surface: #E0E0E0;
+        --theme-on-surface-variant: #B0B0B0;
+        --theme-primary: #00f5d4;
+        --theme-on-primary: #000000;
+        --theme-secondary: #00bbf9;
+        --theme-on-secondary: #000000;
+        --theme-tertiary: #ff6b6b; 
+        --theme-on-tertiary: #000000;
+        --theme-outline: #444;
+        --theme-error: #ff4757;
     }
 
     body {
@@ -33,7 +34,7 @@
 
     .font-pixel {
         font-family: 'Press Start 2P', cursive;
-    }       
+    }
     .pixel-border {
         border: 4px solid #444;
         box-shadow: 
@@ -47,7 +48,7 @@
             inset -4px -4px 0px 0px #444,
             inset 4px 4px 0px 0px #888;
         image-rendering: pixelated;
-    }       
+    }    
     .pixel-button {
         border: 4px solid #333;
         background-color: #2a2a2a;
@@ -71,7 +72,7 @@
         box-shadow: inset 2px 2px 0px 0px #00f5d444;
     }
     /* Custom progress bar with pixelated look */
-    progress {
+    progress{
         -webkit-appearance: none;
         appearance: none;
         width: 100%; 
@@ -98,6 +99,7 @@
 </style>
 {% endblock %}
 
+
 {% block content %}
 
 <!-- Hidden CSRF token for background sync -->
@@ -121,47 +123,25 @@
                 {% component "level_card" level=12 current_xp=750 next_level_xp=1000 progress_percentage=75 %}{% endcomponent %}
 
                 <!-- Daily Quest / Stats -->
-                <section class="space-y-4 bg-[#2a2a2a]">
-                    {% component "stat_card" %}{% endcomponent %}
+                <section class="space-y-4 bg-[#2a2a2a)">
+                    {% component "stat_card" todays_total_calories=todays_total_calories %}{% endcomponent %}
                 </section>
 
-                <!-- Action Buttons -->
+                <!-- Action Buttons --> 
                 <section class="grid grid-cols-2 gap-4 bg-[#2a2a2a]"></section>
                 <!-- Action Buttons -->
                 <section class="grid grid-cols-2 gap-4 bg-[#2a2a2a]">
                     {% component "button" text="START CARDIO" variant="cyan" %}{% endcomponent %}
                     {% component "button" text="START LIFT" variant="red" %}{% endcomponent %}
                 </section>
-
                 <!-- Competitions -->
                 <section>
                     {% component "competitions" %}{% endcomponent %}
+
+
                 </section>
 
-                <!-- Garmin Section with pixel styling -->
-                <section class="pixel-border-light bg-[#2a2a2a] p-4" style="background-color: #121212;"> 
-                    <h2 class="text-xl font-semibold text-theme-on-surface mb-4">Garmin Connect</h2>
-                    {% if garmin_linked %}
-                        <p class="text-theme-on-surface-variant mb-2">Your Garmin account is linked.</p>
-                        <div class="last-sync-display"></div>
-
-                        <div class="today-steps-display"></div>
-                        <div class="activity-count-display"></div>
-
-                        <form method="POST" action="{% url 'fitness:sync_garmin' %}" class="mt-4" id="garmin-sync-form">
-                            {% csrf_token %}
-                            <input type="hidden" name="date_range" id="date-range-input" value="current_month" />
-
-                            <button type="button"
-                                    onclick="openGarminSyncModal()"
-                                    class="px-4 py-2 bg-theme-primary text-theme-on-primary rounded-lg hover:bg-theme-primary/90 transition-colors">Sync Garmin Data</button>
-                        </form>
-                    {% else %}
-                        <p class="text-theme-on-surface-variant mb-4">Connect your Garmin account to automatically sync activities and daily stats.</p> 
-                        <a href="#" class="inline-block px-4 py-2 bg-theme-secondary text-theme-on-secondary rounded-lg hover:bg-theme-secondary/90 transition-colors">Connect Garmin Account</a>
-                    {% endif %}
-                </section>
-
+            
                 <!-- Existing Chart Components with pixel styling -->
                 <section class="pixel-border bg-[#2a2a2a] p-4">
                     {% component "calories_chart_card" %}{% endcomponent %}
@@ -181,11 +161,11 @@
                         {% for activity in today_activities %}
                         <div class="flex justify-between items-center p-3 bg-[#333] rounded-lg">
                             <div>
-                                <p class="font-medium text-theme-on-surface">{{ activity.name }}</p>
+                                <p class="font-medium text-theme-on-surface">{{ activity.name }}</p> 
                                 <p class="text-sm text-theme-on-surface-variant">{{ activity.activity_type|title }}</p>
-                            </div>
+                            </div> 
                             <div class="text-right"> 
-                                <p class="text-sm text-theme-on-surface-variant">{{ activity.start_time_utc|time:"H:i" }}</p>
+                                <p class="text-sm text-theme-on-surface-variant">{{ activity.start_time_utc|time:"H:i" }}</p> 
                                 {% if activity.duration_seconds %}
                                 <p class="text-sm text-theme-on-surface-variant">{{ activity.duration_seconds|format_duration_seconds }}</p>
                                 {% endif %}
@@ -198,7 +178,7 @@
             </div>
 
             <!-- Right Column -->
-            <div class="space-y-6" style="background-color: #121212;">                
+            <div class="space-y-6" style="background-color: #121212;">                        
                 <!-- Virtual Gym Equipment -->
                 <section class="bg-[#2a2a2a]">
                     <h3 class="font-pixel text-lg text-center text-gray-300">GYM LOCKER</h3>
@@ -217,7 +197,8 @@
             </div>
 
         </main>
-    </div><!-- Main Content Area -->
+    </div>
+    <!-- Main Content Area -->
 </div>
 
 <!-- Background sync script -->
@@ -229,7 +210,7 @@
     var garmin_next_sync = '{{ garmin_next_sync|default:"" }}'; 
     var background_garmin_sync_url = '{% url "fitness:background_garmin_sync" %}';  
     var steps_chart_data_url = '{% url "fitness:steps_chart_data" %}?range=current_month';  
-    var sync_garmin_url = '{% url "fitness:sync_garmin" %}';
+    var sync_garmin_url = '{% url "fitness:sync_garmin" %}';  
     var csrfToken = '{{ csrf_token }}';
 
     console.log('Garmin linked: ' + garmin_linked);
@@ -247,9 +228,9 @@
                 if (stepsElement) {
                     const todaySteps = 15234; // Some calculated value for example
                     if (todaySteps > 0) {
-                    stepsElement.innerHTML = `<p class="text-lg text-theme-on-surface">Today's Steps: ${Math.round(todaySteps)}</p>`;        
+                    stepsElement.innerHTML = `<p class="text-lg text-theme-on-surface">Today's Steps: ${Math.round(todaySteps)}</p>`;         
                     } else {
-                    stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;        
+                    stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;         
                     }
                 }
 
@@ -258,9 +239,9 @@
                 if (activityElement) { 
                     const totalActivities = 12; // Some calculated value for example
                     if (totalActivities > 0) {
-                    activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;        
+                    activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;         
                     } else {
-                    activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;        
+                    activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         
                     }
                 }
 
@@ -277,6 +258,7 @@
 
                     // Update today's steps
                     if (stepsElement) {
+
                         const todayData = data.user_data.find(item => item.date === today);
 
                         if (todayData) {
@@ -290,31 +272,27 @@
                             if (todaySteps > 0) {
                                 stepsElement.innerHTML = `<p class="text-lg text-theme-on-surface">Today's Steps: ${Math.round(todaySteps)}</p>`;        
                             } else {
-                                stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;        
+                                stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;         
                             }    
                         } else {
                             stepsElement.innerHTML = `<p class="text-theme-on-surface-variant">No steps data for today yet.</p>`;        
-                        }
+                        }    
                     }
 
                     // Update activity count (this is approximate based on data length)
                     if (activityElement) {
                         const totalActivities = data.user_data.length; // This is not accurate, but better than nothing
                         if (totalActivities > 0) {
-                            activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;        
-                        } else {
-                            activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;        
-                        }    
+                            activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;         else {
+                            activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         }    
                     }
                 }).catch(error => {
                     console.error('Error refreshing steps data:', error);
                     // Revert to original state on error
                     if (stepsElement) {                                   
-                        stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';        
-                    }
+                        stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';         }  
                     if (activityElement) {
-                        activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;        
-                    }    
+                        activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         }    
                 });
 
                 // Update last sync time to current time
@@ -328,7 +306,7 @@
                         minute: '2-digit'
                     });                        
                     syncElement.innerHTML = `<p class="text-sm text-theme-on-surface-variant">Last synced: ${formattedTime}</p>`; 
-                }
+                }      
             }
 
             // Trigger background Garmin sync when page loads
@@ -336,7 +314,7 @@
                 console.log('DOM loaded, triggering background Garmin sync...');
                 const csrfTokenElement = document.querySelector('[name=csrfmiddlewaretoken]'); 
                 if (!csrfTokenElement) {
-                    console.error('CSRF token not found!');
+                    console.error('CSRF token not found!'); 
                     return;
                 }
 
@@ -345,7 +323,7 @@
                 console.log('Making POST request to:', background_garmin_sync_url);
 
                 // First try a simple GET request to test if URL is accessible
-                console.log('Testing URL accessibility with GET request...');
+                console.log('Testing URL accessibility with GET request...'); 
                 fetch(background_garmin_sync_url, {
                     method: 'GET', 
                     credentials: 'same-origin' 
@@ -365,14 +343,10 @@
                 // Use FormData for better Django compatibility
                 const formData = new FormData();
                 formData.append('csrfmiddlewaretoken', csrfTokenValue);
-
                 fetch(background_garmin_sync_url, {
                     method: 'POST',
-                    headers: {
-                        'X-CSRFToken': csrfTokenValue
-                    },
-                    credentials: 'same-origin',
-                    body: formData
+                    body: formData,
+                    credentials: 'same-origin'
                 }).then(response => {
                     console.log('Background sync response status:', response.status);
                     console.log('Response headers:', response.headers);
@@ -385,7 +359,7 @@
                     console.log('Response data:', data);
                     if (typeof data === 'string') {
                         console.error('Got HTML error page instead of JSON:', data);
-                        return {
+                        return;
                     }
 
                     if (data.success) {
@@ -402,13 +376,11 @@
                     }
                 }).catch(error => {
                     console.error('Error triggering background Garmin sync:', error);
-                });
-            });
+                });)),         });
         } else {
             console.log('Background sync not needed - last attempt was recent'); 
-            if (garmin_next_sync) {
-                console.log('Next sync available at: ' + garmin_next_sync);
-            } 
+            if (garmin_next_sync) 
+                console.log('Next sync available at: ' + garmin_next_sync); 
         } 
     } else {
         console.log('Garmin not linked - no background sync script loaded'); 
@@ -419,22 +391,23 @@
 <script>
     // Modal functionality
     document.addEventListener('DOMContentLoaded', function() {
-        const modal = document.getElementById('infoModal'); 
-        const modalContent = document.getElementById('modalContent'); 
+        const modal = document.getElementById('infoModal');
+        const modalContent = document.getElementById('modalContent');
         const closeModal = document.getElementById('closeModal'); 
 
         // Function to open modal with content
         window.openInfoModal = function(description) {
             if (modal && modalContent) {
-                modalContent.innerHTML = description.replace(/\n/g, '<br>').modal.classList.remove('hidden');
+                modalContent.innerHTML = description.replace(/\n/g, '<br>'); 
+                modal.classList.remove('hidden');
             }
         };
 
         // Function to close modal
         window.closeInfoModal = function() {
             if (modal) {
-                modal.classList.add('hidden');
-            }
+                modal.classList.add('hidden'); 
+            }    
         };
 
         // Close modal when clicking close button
@@ -454,16 +427,16 @@
         // Close modal on Escape key.
         document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) { 
-                    closeInfoModal();
+                    closeInfoModal();    
                 }
         });
 
-        // Event delegation for info buttons
+        // Event delegation for info buttons - removed info-button-specific code for generalization
         document.addEventListener('click', function(e) {
-            const infoButton = e.target.closest('.info-button');    
+            const infoButton = e.target.closest('[data-description]');
             if (infoButton) {
-                const description = infoButton.getAttribute('data-description');  
-                if (description) openInfoModal(description); 
+                const description = infoButton.getAttribute('data-description');
+                if (description) openInfoModal(description);
             }
         }); 
     });
@@ -473,7 +446,7 @@
         const modal = document.getElementById('garminSyncModal');  
         if (modal) {           
             modal.classList.remove('hidden');
-        }
+        }    
     }
 
     function closeGarminSyncModal() {
@@ -486,25 +459,26 @@
     function selectSyncRange(range) {
         const input = document.getElementById('date-range-input');    
         if (input) {
-            input.value = range;        
+            input.value = range;          
         }
         closeGarminSyncModal();
         // Submit the form
         const form = document.getElementById('garmin-sync-form');        
         if (form) {
-            form.submit('/main');
+            form.submit('/main');  
         }    
     }
 
     // Close Garmin sync modal on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {           
-            const modal = document.getElementById('garminSyncModal');
+            const modal = document.getElementById('garminSyncModal');           
             if (modal && !modal.classList.contains('hidden')) {
                 closeGarminSyncModal();
-            }
+            }           
         }
     });
+
 
 </script>
 
@@ -520,7 +494,7 @@
                     </svg>
                 </button>
             </div>
-            <div id="modalContent" class="p-4 text-theme-on-surface"> <!-- Content will be populated by JavaScript -->
+            <div id="modalContent" class="p-4 text-theme-on-surface"> <!-- Content will be populated by JavaScript --> -->
             </div>
         </div>
     </div>
@@ -535,7 +509,7 @@
                 <h3 class="text-lg font-semibold text-theme-on-surface">Select Sync Range</h3>
                 <button onclick="closeGarminSyncModal()" class="text-theme-on-surface-variant hover:text-theme-on-surface"> <!-- Button changed from pink to green -->
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6 l12 12" />
                     </svg>
                 </button>
             </div>
@@ -543,16 +517,16 @@
                 <button onclick="selectSyncRange('current_month')" class="w-full p-3 bg-theme-surface-variant hover:bg-theme-primary hover:text-theme-on-primary rounded-lg transition-colors text-left">
                     <div class="font-medium">This Month</div>
                     <div class="text-sm text-theme-on-surface-variant">Sync data from the current month</div>
-                </button>
+                </button>                
                 <button onclick="selectSyncRange('last_3_months')" class="w-full p-3 bg-theme-surface-variant hover:bg-theme-primary hover:text-theme-on-primary rounded-lg transition-colors text-left">
                     <div class="font-medium">Last 3 Months</div>
                     <div class="text-sm text-theme-on-surface-variant">Sync data from the last 3 months</div>
-                </button>
+                </button>                  
                 <button onclick="selectSyncRange('this_year')" class="w-full p-3 bg-theme-surface-variant hover:bg-theme-primary hover:text-theme-on-primary rounded-lg transition-colors text-left">
                     <div class="font-medium">This Year</div>
                     <div class="text-sm text-theme-on-surface-variant">Sync data from the current year</div>
                 </button>
-                <button onclick="selectSyncRange('all_time')" class="w-full p-3 bg-theme-surface-variant hover:bg-theme-primary hover:text-theme-on-primary rounded-lg transition-colors text-left">
+                 <button onclick="selectSyncRange('all_time')" class="w-full p-3 bg-theme-surface-variant hover:bg-theme-primary hover:text-theme-on-primary rounded-lg transition-colors text-left">
                     <div class="font-medium">All Time</div>
                     <div class="text-sm text-theme-on-surface-variant">Sync all available data (10 years)</div>
                 </button>

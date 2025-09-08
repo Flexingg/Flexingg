@@ -22,12 +22,11 @@ class UserProfile(AbstractUser):
     weight = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text="Weight in lbs.") #DecimalField is more precise than IntegerField for weight measurements
     sex = models.CharField(
         max_length=20,
-        choices=[('male', 'Male'),
-                 ('female', 'Female'),
-                 ('other', 'Other'),
-                 ('prefer_not_to_say', 'Prefer not to say')],
+        choices=[('male', 'Male'),('female', 'Female')],
         null=True, blank=True, help_text='Gender'
     )
+    sync_debounce_minutes = models.IntegerField(default=60, null=True, blank=True, help_text="Minutes between automatic Garmin syncs (default: 60)")
+
     groups = models.ManyToManyField(
         'auth.Group',
         related_name='profile_groups', blank=True,
@@ -53,11 +52,25 @@ class UserProfile(AbstractUser):
     )
 
 
-    def earn_gym_gems(self, amount) -> None:
+    def earn_gym_gems(self, amount, garmin_activity=None) -> None:
+        from .models import Transaction
+        Transaction.objects.create(
+            user=self,
+            currency_type='gym_gems',
+            amount=amount,
+            garmin_activity=garmin_activity
+        )
         self.gym_gems += amount
         self.save()
 
-    def earn_cardio_coins(self, amount) -> None: 
+    def earn_cardio_coins(self, amount, garmin_activity=None) -> None: 
+        from .models import Transaction
+        Transaction.objects.create(
+            user=self,
+            currency_type='cardio_coins',
+            amount=amount,
+            garmin_activity=garmin_activity
+        )
         self.cardio_coins += amount
         self.save()
 
@@ -112,7 +125,7 @@ class ColorPreferences(models.Model):
         
     def get_error_color(self): 
         return self.error
-            
+              
     def __str__(self):  
         return f"Color Preferences for {self.user.username}"
 
@@ -123,7 +136,7 @@ class Friendship(models.Model):
         ('pending', 'Pending'),
         ('accepted', 'Accepted'),
         ('declined', 'Declined'),
-        ('blocked', 'Blocked'), # Optional: if blocking should also reflect here
+        ('blocked', 'Blocked') # Optional: if blocking should also reflect here
     ]
 
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False, help_text="Unique ID for this friendship.")  
@@ -270,6 +283,34 @@ class GarminActivity(models.Model):
 
     def __str__(self):  
         return f"{self.user.username} - {self.name} ({self.activity_id}) on {self.start_time_utc.date()}"
+
+
+class Transaction(models.Model):
+    """Tracks currency transactions for users."""
+    CURRENCY_CHOICES = [
+        ('cardio_coins', 'Cardio Coins'),
+        ('gym_gems', 'Gym Gems'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('UserProfile', on_delete=models.CASCADE, related_name='transactions')
+    currency_type = models.CharField(max_length=20, choices=CURRENCY_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    garmin_activity = models.ForeignKey(
+        'GarminActivity', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='transactions'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = "Transactions"
+
+    def __str__(self):
+        return f"{self.user.username} earned {self.amount} {self.currency_type} on {self.created_at.date()}"
 
 
 class SweatScoreWeights(models.Model):    

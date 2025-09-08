@@ -1,7 +1,13 @@
 {% load static %}
 
 <div class="flex items-center space-x-2 bg-theme-surface-variant rounded-lg px-3 py-2 border border-theme-outline animate-pulse">
-    <i class="fas fa-coins text-yellow-500 text-xl"></i>
-    <span class="text-theme-on-surface font-bold">{{ coins|default:"1000" }}</span>
-    <span class="text-theme-on-surface-variant">Coins</span>
+    {% if currency_type == 'cardio_coins' %}
+        <i class="fas fa-heart text-red-500 text-xl"></i>
+        <span class="text-theme-on-surface font-bold">{{ coins }}</span>
+        <span class="text-theme-on-surface-variant">Coins</span>
+    {% else %}
+        <i class="fas fa-gem text-blue-500 text-xl"></i>
+        <span class="text-theme-on-surface font-bold">{{ coins }}</span>
+        <span class="text-theme-on-surface-variant">Gems</span>
+    {% endif %}
 </div>

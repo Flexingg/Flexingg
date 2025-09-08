@@ -436,7 +436,7 @@ input[type="password"].pixel-input:focus {
                         <div class="flex items-center space-x-3">
                             <div class="flex items-center">
                                 <!-- Coin Icon -->
-                                {% component "coins" %}{% endcomponent %}
+                                {% component "coins" user=request.user %}{% endcomponent %}
                             </div>
                             <!-- Notification Icon -->
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M4 14V8h1v6H4zm7 0h2V8H4v3zm1-1h6v1H5v-1z"/><path d="M2 5V2h12v3H2zm1-1h10V3H3v1z"/><path d="M5 11h2V8H5v3zm4 0h2V8H9v3z"/></svg>
@@ -446,24 +446,7 @@ input[type="password"].pixel-input:focus {
             </header>
 
             <main class="flex-1 overflow-y-auto">
-                {% if messages %}
-                    <div class="p-4">
-                        {% for message in messages %}
-                        <div x-data="{ show: true }"
-                                x-show="show"
-                                x-init="setTimeout(() => show = false, 2000)"
-                                x-transition:enter="transition ease-out duration-300"
-                                x-transition:enter-start="opacity-0 transform scale-90"
-                                x-transition:enter-end="opacity-100 transform scale-100"
-                                x-transition:leave="transition ease-in duration-300"
-                                x-transition:leave-start="opacity-100 transform scale-100"
-                                x-transition:leave-end="opacity-0 transform scale-90"
-                                class="rounded-lg bg-theme-surface-variant text-theme-on-surface-variant border border-theme-outline p-4 mb-4">
-                            {{ message }}
-                        </div>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {% component "toast_notification" messages=messages %}{% endcomponent %}
                 <div class="px-0">
                     {% block content %}{% endblock content %}
                 </div>

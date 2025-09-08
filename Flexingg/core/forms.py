@@ -1,3 +1,4 @@
+
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import get_user_model
@@ -6,6 +7,7 @@ User = get_user_model()
 
 
 class LoginForm(AuthenticationForm):
+
     username = forms.CharField(
         label='Gamertag',
         widget=forms.TextInput(attrs={
@@ -31,7 +33,7 @@ class LoginForm(AuthenticationForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['username', 'email', 'height_ft', 'height_in', 'weight', 'sex']
+        fields = ['username', 'email', 'height_ft', 'height_in', 'weight', 'sex', 'sync_debounce_minutes']
         widgets = {
             'username': forms.TextInput(attrs={
                 'class': 'pixel-input',
@@ -46,12 +48,12 @@ class ProfileForm(forms.ModelForm):
             'height_ft': forms.NumberInput(attrs={
                 'class': 'pixel-input',
                 'placeholder': 'ft',
-                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
+                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; padding-right: 2rem !important;'
             }), 
             'height_in': forms.NumberInput(attrs={
                 'class': 'pixel-input',
                 'placeholder': 'in',
-                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
+                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; padding-right: 2rem !important;'
             }), 
             'weight': forms.NumberInput(attrs={
                 'class': 'pixel-input',
@@ -62,6 +64,13 @@ class ProfileForm(forms.ModelForm):
                 'class': 'pixel-select',
                 'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
             }),
+            'sync_debounce_minutes': forms.NumberInput(attrs={
+                'class': 'pixel-input',
+                'placeholder': 'Sync debounce (minutes)',
+                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;',
+                'min': '1',
+                'max': '1440'
+            })
         }
 
 
@@ -93,12 +102,12 @@ class SignUpForm(UserCreationForm):
     class Meta:
         model = User
         fields = ('username', 'password1', 'password2')
-        widgets = { 
+        widgets = {
             'username': forms.TextInput(attrs={
                 'class': 'pixel-input',
                 'placeholder': 'Choose your gamer tag',
-                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;' 
-            }), 
+                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
+            })
         }
 
 class GarminConnectForm(forms.Form):

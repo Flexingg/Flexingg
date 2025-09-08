@@ -2,10 +2,17 @@
     <div class="flex items-center justify-between">
         <span class="font-pixel text-sm text-white">Garmin Connect</span>
         {% if garmin_connected %}
-        <form method="post" action="{% url 'fitness:disconnect_garmin' %}" style="display: inline;">
-            {% csrf_token %}
-            <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
-        </form>
+        <div class="flex space-x-2">
+            <form method="post" action="{% url 'fitness:sync_garmin' %}" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="date_range" value="current_month">
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">SYNC</button>
+            </form>
+            <form method="post" action="{% url 'fitness:disconnect_garmin' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+        </div>
         {% else %}
         <button id="garmin-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
         {% endif %}
@@ -25,7 +32,7 @@
     </div>
 </div>
 
-<!-- Modal only shown if not connected, but since conditional in JS or CSS, keep it always but hidden -->
+<!-- Modal only shown if not connected -->
 {% if not garmin_connected %}
 <div id="garmin-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
@@ -49,4 +56,3 @@
     </div>
 </div>
 {% endif %}
-
