@@ -1,5 +1,8 @@
 # Flexingg Django Project
 
+## Partner Repo (Enables Health Connect Sync on Android Devices)
+https://github.com/Flexingg/Flexingg-Sync
+
 ## Local Development Setup
 
 1. Ensure Python 3.12 is installed.

@@ -11,6 +11,26 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Connect button not found');
     }
 
+    console.log('About to check Health Connect button');
+
+    // Health Connect button handler
+    const healthConnectBtn = document.getElementById('health-connect-btn');
+    console.log('Health Connect button:', healthConnectBtn);
+    if (healthConnectBtn) {
+        healthConnectBtn.addEventListener('click', function() {
+            console.log('Health Connect button clicked');
+            const link = document.createElement('a');
+            link.href = '/fitness/download-hc-apk/';
+            link.download = 'hc_gateway.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            console.log('APK download triggered via dedicated URL');
+        });
+    } else {
+        console.log('Health Connect button not found');
+    }
+
     // Modal toggle function
     window.toggleGarminModal = function() {
         console.log('toggleGarminModal called');

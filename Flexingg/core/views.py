@@ -11,7 +11,7 @@ from django.utils import timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse, FileResponse
 from django.views import View
 from .models import Garmin_Auth, GarminDailySteps, GarminActivity, SweatScoreWeights, UserProfile, Friendship
 from .models import *  # JWT, Notification, Relationship
@@ -27,7 +27,7 @@ from decimal import Decimal
 import random
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum
-
+import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class HomeView(TemplateView):
                     # Update last_sync if at least one succeeded or partial
                     if steps_result.get('success') or activities_result.get('success'):
                         garmin_auth.last_sync = now
-                        garmin_auth.save(update_fields=['last_sync'])
+                        garmin_auth.save(update_fields=['last_sync']);
                         context['garmin_sync_triggered'] = True
                         logger.info(f"Garmin sync triggered for user {profile.id}: steps {steps_result.get('steps_synced', 0)}, activities {activities_result.get('activities_synced', 0)}")
                     else:
@@ -348,7 +348,7 @@ def relate_steps(steps):
     ensuring the quantity is less than 100 and not rounded to 0.00.
     """
     if steps < 0:
-        return "How? "
+        return "How?"
     else:
         # Filter items so the resulting quantity is less than 100
         suitable_items = {
@@ -492,8 +492,7 @@ def get_calories_chart_data(request):
     friendships_as_from = Friendship.objects.filter(
         from_user=request.user,
         status='accepted'
-    ).values_list('to_user', flat=True)
-
+    ).values_list('to_user', flat=True);
     friendships_as_to = Friendship.objects.filter(
         to_user=request.user,
         status='accepted'
@@ -741,7 +740,7 @@ def get_steps_chart_data(request):
         'user_total': int(user_total_steps),
         'friends_average': int(friends_average) if friends_average else 0,
         'user_rank': user_rank,
-        'sentence': relate_steps(int(user_total_steps)) if user_total_steps > 0 else "No steps taken yet!"
+        'sentence': relate_steps(int(user_total_steps))if user_total_steps > 0 else "No steps taken yet!"
     }
 
     return JsonResponse({
@@ -1008,9 +1007,6 @@ def perform_garmin_sync_steps(user, start_date, end_date):
                 garth.exchange(oauth1_token, client=garth.client)
 
 
-                garth.client.measure("garth:refresh_token_from_garmin:success", service="garth", context=self.__class__.__name__);
-
-
                 # Update stored tokens
                 garmin_auth.oauth_token = oauth1_token.oauth_token
                 garmin_auth.oauth_token_secret = oauth1_token.oauth_token_secret
@@ -1145,7 +1141,7 @@ def perform_garmin_sync_activities(user, limit=500, start_date=None, end_date=No
                 garmin_auth.oauth_token_secret = oauth1_token.oauth_token_secret
                 garmin_auth.mfa_token = getattr(oauth1_token, 'mfa_token', None)
                 garmin_auth.mfa_expiration_timestamp = getattr(oauth1_token, 'mfa_expiration_timestamp', None)
-                garmin_auth.domain = getattr(oauth1_token, 'domain', None)
+                garirm_auth.domain = getattr(oauth1_token, 'domain', None)
                 garmin_auth.scope = oauth2_token.scope
                 garmin_auth.jti = oauth2_token.jti
                 garmin_auth.token_type = oauth2_token.token_type
@@ -1288,7 +1284,7 @@ class ConnectGarminView(View):
         form = GarminConnectForm(request.POST)
         if form.is_valid():
             garmin_email = form.cleaned_data['garmin_email']
-            garmin_password = form.cleaned_data['garmin_password']
+            garmin_password = form.cleaned_data['garmin_password'];
 
             try:
                 # Clear any existing Garmin auth for this user first
