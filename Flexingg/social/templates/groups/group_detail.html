@@ -1,22 +1,70 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ group.name }}</title>
-</head>
-<body>
-    <h1>{{ group.name }}</h1>
-    <p>{{ group.description }}</p>
-    <h2>Members</h2>
-    <ul>
-    {% for member in members %}
-        <li>{{ member.user.username }} ({{ member.role }})</li>
-    {% endfor %}
-    </ul>
-    {% if not is_member %}
-        <a href="{% url 'groups:join_group' group.id %}">Join Group</a>
-    {% else %}
-        <a href="{% url 'groups:leave_group' group.id %}">Leave Group</a>
-    {% endif %}
-    <a href="{% url 'groups:group_list' %}">Back to Groups</a>
-</body>
-</html>
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ group.name }} - Flexin.gg{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<header class="p-4 flex justify-between items-center bg-theme-secondary border-b-4 border-black flex-shrink-0">
+    <h1 class="font-pixel text-2xl text-theme-on-secondary tracking-wider">{{ group.name }}</h1>
+    <div class="flex items-center space-x-3">
+        {% component "coins" user=request.user %}{% endcomponent %}
+    </div>
+</header>
+
+<main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+    
+    <!-- Group Info Section -->
+    <section class="space-y-4">
+        <h2 class="font-pixel text-lg text-theme-on-surface">GROUP INFO</h2>
+        <div class="pixel-border bg-[#2a2a2a] p-4">
+            <div class="flex flex-col sm:flex-row items-start gap-4">
+                <img src="https://placehold.co/64x64/a855f7/ffffff?text={{ group.name|slice:':2' }}" alt="{{ group.name }} Emblem" class="w-16 h-16 pixel-border-light object-cover flex-shrink-0">
+                <div class="flex-grow">
+                    <p class="font-pixel text-lg text-purple-400">{{ group.name }}</p>
+                    <p class="text-sm text-gray-300 mt-2">{{ group.description }}</p>
+                    <p class="font-pixel text-sm text-white mt-2">Created: {{ group.created_at|date:"M d, Y" }}</p>
+                    <!-- Members count from len(members), but since it's passed as list, use it -->
+                    <p class="font-pixel text-sm text-white">Members: {{ members|length }}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Members Section -->
+    <section class="space-y-4">
+        <h2 class="font-pixel text-lg text-theme-on-surface">MEMBERS</h2>
+        <div class="space-y-3">
+            {% for member in members %}
+            <div class="pixel-border bg-[#2a2a2a] p-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <img src="https://placehold.co/32x32/7e22ce/fff?text={{ member.user.username|slice:':1' }}" alt="{{ member.user.username }}" class="w-8 h-8 pixel-border object-cover rounded-full">
+                    <div>
+                        <p class="font-pixel text-sm text-white">{{ member.user.username }}</p>
+                        <p class="text-xs text-gray-400">Role: {{ member.role|upper }}</p>
+                    </div>
+                </div>
+                {% if member.role == 'admin' %}
+                <span class="font-pixel text-xs text-yellow-300">ADMIN</span>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p class="font-pixel text-sm text-gray-400">No members yet.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Actions Section -->
+    <section class="space-y-4">
+        <h2 class="font-pixel text-lg text-theme-on-surface">ACTIONS</h2>
+        <div class="flex gap-4">
+            {% if not is_member %}
+            <a href="{% url 'groups:join_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-green-400 text-center">JOIN GROUP</a>
+            {% else %}
+            <a href="{% url 'groups:leave_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-red-500 text-center">LEAVE GROUP</a>
+            {% endif %}
+            <a href="{% url 'groups:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">BACK TO GROUPS</a>
+        </div>
+    </section>
+</main>
+{% endblock content %}

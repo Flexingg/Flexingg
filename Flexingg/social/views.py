@@ -132,7 +132,7 @@ def create_group(request):
             group.creator = request.user
             group.save()
             GroupMembership.objects.create(user=request.user, group=group, role='admin')
-            return redirect('social:group_list')
+            return redirect('groups:group_list')
     else:
         form = GroupForm()
     return render(request, 'groups/create_group.html', {'form': form})
@@ -143,7 +143,7 @@ def join_group(request, group_id):
     group = get_object_or_404(Group, id=group_id)
     if not GroupMembership.objects.filter(user=request.user, group=group).exists():
         GroupMembership.objects.create(user=request.user, group=group)
-    return redirect('social:group_detail', group_id=group.id)
+    return redirect('groups:group_detail', group_id=group.id)
 
 
 @login_required
@@ -152,4 +152,4 @@ def leave_group(request, group_id):
     membership = GroupMembership.objects.filter(user=request.user, group=group).first()
     if membership:
         membership.delete()
-    return redirect('social:group_list')
+    return redirect('groups:group_list')

@@ -1,15 +1,52 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Create Group</title>
-</head>
-<body>
-    <h1>Create a New Group</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Create Group</button>
-    </form>
-    <a href="{% url 'groups:group_list' %}">Back to Groups</a>
-</body>
-</html>
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Create Group - Flexin.gg{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<header class="p-4 flex justify-between items-center bg-theme-secondary border-b-4 border-black flex-shrink-0">
+    <h1 class="font-pixel text-2xl text-theme-on-secondary tracking-wider">CREATE GROUP</h1>
+    <div class="flex items-center space-x-3">
+        {% component "coins" user=request.user %}{% endcomponent %}
+    </div>
+</header>
+
+<main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+    <section class="space-y-4">
+        <h2 class="font-pixel text-lg text-theme-on-surface">CREATE YOUR GROUP</h2>
+        <form method="post" class="pixel-border-light bg-[#2a2a2a] p-6 space-y-4">
+            {% csrf_token %}
+            <div>
+                <label for="{{ form.name.id_for_label }}" class="font-pixel text-sm text-gray-400 block mb-1">GROUP NAME</label>
+                <input type="text" name="name" id="{{ form.name.id_for_label }}" value="{{ form.name.value|default_if_none:'' }}" class="pixel-input w-full" {% if form.name.field.required %}required{% endif %}
+                {% if form.name.errors %}aria-invalid="true"{% endif %}>
+                {% if form.name.errors %}
+                    <p class="text-red-400 text-xs mt-1">{{ form.name.errors.0 }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.description.id_for_label }}" class="font-pixel text-sm text-gray-400 block mb-1">DESCRIPTION</label>
+                <textarea name="description" id="{{ form.description.id_for_label }}" rows="4" class="pixel-input w-full h-24 resize-none" {% if form.description.field.required %}required{% endif %}
+                {% if form.description.errors %}aria-invalid="true"{% endif %}>{{ form.description.value|default_if_none:'' }}</textarea>
+                {% if form.description.errors %}
+                    <p class="text-red-400 text-xs mt-1">{{ form.description.errors.0 }}</p>
+                {% endif %}
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button type="submit" class="pixel-button w-full p-3 font-pixel text-sm text-green-400">CREATE GROUP</button>
+                <a href="{% url 'groups:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">CANCEL</a>
+            </div>
+            {% if form.non_field_errors %}
+                <div class="bg-red-900 border border-red-500 p-3 rounded">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+        </form>
+    </section>
+</main>
+{% endblock content %}
+
+{% block scripts %}
+{{ form.media }}
+{% endblock scripts %}
