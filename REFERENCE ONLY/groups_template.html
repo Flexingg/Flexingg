@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flexin.gg - Teams</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles to blend pixel art with Material 3 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212;
+            color: #E0E0E0;
+        }
+        .font-pixel {
+            font-family: 'Press 'Start 2P', cursive;
+        }
+        .pixel-border {
+            border: 4px solid #444;
+            box-shadow: 
+                inset -4px -4px 0px 0px #222,
+                inset 4px 4px 0px 0px #555;
+            image-rendering: pixelated;
+        }
+        .pixel-border-light {
+            border: 4px solid #666;
+            box-shadow: 
+                inset -4px -4px 0px 0px #444,
+                inset 4px 4px 0px 0px #888;
+            image-rendering: pixelated;
+        }
+        .pixel-button {
+            border: 4px solid #333;
+            background-color: #2a2a2a;
+            box-shadow: 
+                inset -4px -4px 0px 0px #1a1a1a,
+                4px 4px 0px 0px #000;
+            transition: all 0.1s ease-in-out;
+        }
+        .pixel-button:active {
+            transform: translate(4px, 4px);
+            box-shadow: inset -2px -2px 0px 0px #1a1a1a;
+        }
+        .nav-icon-active svg {
+             filter: drop-shadow(0 0 5px #a855f7) drop-shadow(0 0 10px #a855f7);
+        }
+        .nav-icon-active-desktop {
+            background-color: #2a2a2a;
+            box-shadow: inset 2px 2px 0px 0px #a855f744;
+        }
+        .pixel-input {
+            background-color: #222;
+            border: 2px solid #444;
+            padding: 8px 12px;
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        .pixel-input:focus {
+            outline: none;
+            border-color: #a855f7;
+            box-shadow: 0 0 10px #a855f766;
+        }
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        .modal-content {
+             transition: transform 0.25s ease;
+        }
+        .emblem-picker-item {
+            border: 4px solid transparent;
+        }
+        .emblem-picker-item.selected {
+            border-color: #a855f7;
+            background-color: #a855f722;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-50">
+
+    <!-- App Container -->
+    <div class="w-full h-screen bg-[#1c1c1c] md:max-w-7xl md:mx-auto md:my-8 md:h-auto md:min-h-[850px] md:rounded-2xl md:shadow-2xl overflow-hidden flex relative">
+
+        <!-- Sidebar Navigation (Desktop) -->
+        <nav class="hidden md:flex flex-col w-64 bg-[#111] border-r-4 border-black p-4 flex-shrink-0">
+            <div class="flex-shrink-0 mb-8">
+                <h1 class="font-pixel text-2xl text-white tracking-wider text-center">FLEXIN.GG</h1>
+            </div>
+            <div class="flex-grow overflow-y-auto space-y-2">
+                <a href="#" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+                    <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2 15V8h2v5h8V8h2v7H2z"/><path d="M1 8l7-7 7 7v1H1V8z"/><path d="M7 13h2v-3H7v3z"/></svg>
+                    <span class="text-sm font-pixel ml-3">Home</span>
+                </a>
+                <a href="friends.html" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+                    <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M5 14v-2H2v-1H1v-1h1V9h1V8h1V7h1V6h1v1h1v1h4V7h1V6h1v1h1v1h1v1h1v1h-1v1h1v1h-3v2H5z"/></svg>
+                    <span class="text-sm font-pixel ml-3">Friends</span>
+                </a>
+                <a href="teams.html" class="flex items-center p-3 rounded-lg text-purple-400 nav-icon-active-desktop">
+                    <!-- Teams Icon -->
+                    <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h1v11H3V2z"/><path d="M4 2h7v1H4V2zm0 2h6v1H4V4zm0 2h7v1H4V6zm0 2h5v1H4V8z"/><path d="M12 2v1h1v1h-1v1h1v1h-1v1h1v1h-1v1h1v2h-1V2z"/></svg>
+                    <span class="text-sm font-pixel ml-3">Teams</span>
+                </a>
+                <a href="#" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+                    <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M3 15V1h1v3h8V1h1v14H3zM4 2v2h8V2H4z"/><path d="M5 13h6V6H5v7zm1-1h4V7H6v5z"/><path d="M2 5h1v2H2V5zm11 0h1v2h-1V5z"/></svg>
+                    <span class="text-sm font-pixel ml-3">Battle</span>
+                </a>
+                <a href="settings.html" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+                    <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M5 14v-2h6v2H5z"/><path d="M2 12V2h12v10H2zm1-1h10V3H3v8z"/><path d="M6 7h4v1H6V7z"/><path d="M6 5h1v1H6V5zm3 0h1v1H9V5z"/></svg>
+                    <span class="text-sm font-pixel ml-3">User</span>
+                </a>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <div class="flex flex-col w-full overflow-hidden">
+
+            <!-- Header -->
+            <header class="p-4 flex justify-between items-center bg-[#2a2a2a] border-b-4 border-black flex-shrink-0">
+                <h1 class="font-pixel text-2xl text-white tracking-wider">TEAMS</h1>
+                <div class="flex items-center space-x-3">
+                    <div class="flex items-center">
+                        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-2a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" fill="#FFD700"/><path d="M11 15h2v2h-2v-2Zm0-8h2v6h-2V7Z" fill="#FFD700"/><path d="M12 15h2v2h-2z" fill="#E69500"/><path d="M14 7h-2v6h2zM12 5a7 7 0 1 0 0 14A7 7 0 0 0 12 5Z" fill="#FFB800"/><path d="M12 12v3h-2v-3h-2v-2h2v-2h2v2h2v2z" fill="#E69500"/></svg>
+                        <span class="font-pixel text-lg text-yellow-300 ml-1">1337</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Scrollable Main Content -->
+            <main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+                
+                <!-- My Team Section -->
+                <section>
+                    <h3 class="font-pixel text-lg text-white">MY TEAM</h3>
+                    <div class="mt-3 pixel-border bg-[#2a2a2a] p-4">
+                        <div class="flex flex-col sm:flex-row items-center gap-4">
+                            <img src="https://placehold.co/64x64/a855f7/ffffff?text=IC" alt="Team Emblem" class="w-16 h-16 pixel-border-light object-cover flex-shrink-0">
+                            <div class="flex-grow text-center sm:text-left">
+                                <p class="font-pixel text-lg text-purple-400">The Iron Crew</p>
+                                <p class="text-xs text-gray-400 mt-1">"Forged in strength, bound by loyalty."</p>
+                                <p class="font-pixel text-sm text-white mt-1">Members: 8/10</p>
+                            </div>
+                            <div class="flex gap-2 w-full sm:w-auto">
+                                <button class="pixel-button w-full p-2 font-pixel text-xs text-cyan-300">MANAGE</button>
+                                <button class="pixel-button w-full p-2 font-pixel text-xs text-red-500">LEAVE</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Find a Team -->
+                <section>
+                    <h3 class="font-pixel text-lg text-white">FIND A TEAM</h3>
+                    <div class="relative mt-3">
+                        <input type="text" placeholder="Search teams..." class="pixel-input w-full pl-10">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <button id="createTeamBtn" class="pixel-button w-full p-3 font-pixel text-sm text-green-400">CREATE TEAM</button>
+                        <button id="joinCodeBtn" class="pixel-button w-full p-3 font-pixel text-sm text-yellow-300">JOIN WITH CODE</button>
+                    </div>
+
+                    <div class="mt-6 space-y-3">
+                        <!-- Team Item 1 -->
+                        <div class="pixel-border bg-[#2a2a2a] p-3 flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <img src="https://placehold.co/48x48/7e22ce/fff?text=VL" alt="Team Emblem" class="w-12 h-12 pixel-border object-cover">
+                                <div>
+                                    <p class="font-pixel text-sm text-white">Void Legion</p>
+                                    <p class="text-xs text-gray-400">Members: 10/10</p>
+                                </div>
+                            </div>
+                            <button class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 flex-shrink-0">VIEW</button>
+                        </div>
+                        <!-- Team Item 2 -->
+                        <div class="pixel-border bg-[#2a2a2a] p-3 flex items-center justify-between gap-3">
+                           <div class="flex items-center gap-3">
+                                <img src="https://placehold.co/48x48/be123c/fff?text=RS" alt="Team Emblem" class="w-12 h-12 pixel-border object-cover">
+                                <div>
+                                    <p class="font-pixel text-sm text-white">Rogue Syndicate</p>
+                                    <p class="text-xs text-gray-400">Members: 5/10</p>
+                                </div>
+                            </div>
+                            <button class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300 flex-shrink-0">JOIN</button>
+                        </div>
+                         <!-- Team Item 3 -->
+                        <div class="pixel-border bg-[#2a2a2a] p-3 flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <img src="https://placehold.co/48x48/047857/fff?text=TG" alt="Team Emblem" class="w-12 h-12 pixel-border object-cover">
+                                <div>
+                                    <p class="font-pixel text-sm text-white">Terra Guardians</p>
+                                    <p class="text-xs text-gray-400">Members: 7/10</p>
+                                </div>
+                            </div>
+                            <button class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300 flex-shrink-0">JOIN</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+
+            <!-- Bottom Navigation Bar -->
+            <nav class="w-full bg-[#111] border-t-4 border-black flex justify-around flex-shrink-0 md:hidden">
+                <a href="#" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500"><svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M2 15V8h2v5h8V8h2v7H2z"/><path d="M1 8l7-7 7 7v1H1V8z"/><path d="M7 13h2v-3H7v3z"/></svg><span class="text-xs font-pixel mt-1">Home</span></a>
+                <a href="friends.html" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500"><svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M5 14v-2H2v-1H1v-1h1V9h1V8h1V7h1V6h1v1h1v1h4V7h1V6h1v1h1v1h1v1h1v1h-1v1h1v1h-3v2H5z"/></svg><span class="text-xs font-pixel mt-1">Friends</span></a>
+                <a href="teams.html" class="flex-1 flex flex-col items-center justify-center p-2 text-purple-400 nav-icon-active"><svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h1v11H3V2z"/><path d="M4 2h7v1H4V2zm0 2h6v1H4V4zm0 2h7v1H4V6zm0 2h5v1H4V8z"/><path d="M12 2v1h1v1h-1v1h1v1h-1v1h1v1h-1v1h1v2h-1V2z"/></svg><span class="text-xs font-pixel mt-1">Teams</span></a>
+                <a href="#" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500"><svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M3 15V1h1v3h8V1h1v14H3zM4 2v2h8V2H4z"/><path d="M5 13h6V6H5v7zm1-1h4V7H6v5z"/><path d="M2 5h1v2H2V5zm11 0h1v2h-1V5z"/></svg><span class="text-xs font-pixel mt-1">Battle</span></a>
+                <a href="settings.html" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500"><svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M5 14v-2h6v2H5z"/><path d="M2 12V2h12v10H2zm1-1h10V3H3v8z"/><path d="M6 7h4v1H6V7z"/><path d="M6 5h1v1H6V5zm3 0h1v1H9V5z"/></svg><span class="text-xs font-pixel mt-1">User</span></a>
+            </nav>
+        </div>
+
+        <!-- Create Team Modal -->
+        <div id="createTeamModal" class="modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+            <div class="modal-content pixel-border-light bg-[#2a2a2a] w-full max-w-md p-6 transform scale-95 space-y-4">
+                <h3 class="font-pixel text-lg text-white">CREATE YOUR TEAM</h3>
+                <div>
+                    <label class="font-pixel text-sm text-gray-400">TEAM NAME</label>
+                    <input type="text" placeholder="The Iron Crew" class="pixel-input w-full mt-1">
+                </div>
+                <div>
+                    <label class="font-pixel text-sm text-gray-400">TEAM TAG</label>
+                    <input type="text" placeholder="IRON" maxlength="4" class="pixel-input w-full mt-1">
+                </div>
+                <div>
+                    <label class="font-pixel text-sm text-gray-400">CHOOSE EMBLEM</label>
+                    <div class="grid grid-cols-5 gap-2 mt-2 p-2 pixel-border bg-[#1c1c1c]">
+                        <img src="https://placehold.co/48x48/a855f7/fff?text=IC" alt="Emblem 1" class="w-full h-auto cursor-pointer emblem-picker-item selected">
+                        <img src="https://placehold.co/48x48/be123c/fff?text=SW" alt="Emblem 2" class="w-full h-auto cursor-pointer emblem-picker-item">
+                        <img src="https://placehold.co/48x48/047857/fff?text=SK" alt="Emblem 3" class="w-full h-auto cursor-pointer emblem-picker-item">
+                        <img src="https://placehold.co/48x48/b45309/fff?text=AX" alt="Emblem 4" class="w-full h-auto cursor-pointer emblem-picker-item">
+                        <img src="https://placehold.co/48x48/1d4ed8/fff?text=SH" alt="Emblem 5" class="w-full h-auto cursor-pointer emblem-picker-item">
+                    </div>
+                </div>
+                <div class="flex gap-4 mt-4">
+                    <button class="modal-close pixel-button w-full p-2 font-pixel text-sm text-gray-300">CANCEL</button>
+                    <button class="modal-close pixel-button w-full p-2 font-pixel text-sm text-green-400">CREATE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Join with Code Modal -->
+        <div id="joinCodeModal" class="modal fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+            <div class="modal-content pixel-border-light bg-[#2a2a2a] w-full max-w-xs p-6 text-center transform scale-95 space-y-4">
+                <h3 class="font-pixel text-lg text-white">JOIN WITH CODE</h3>
+                <input type="text" placeholder="Enter code..." class="pixel-input w-full text-center tracking-widest font-pixel">
+                <div class="flex gap-4 mt-4">
+                    <button class="modal-close pixel-button w-full p-2 font-pixel text-sm text-gray-300">CANCEL</button>
+                    <button class="modal-close pixel-button w-full p-2 font-pixel text-sm text-yellow-300">JOIN</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setupModal(modalId, openBtnId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) return;
+            const openBtn = document.getElementById(openBtnId);
+            const closeBtns = modal.querySelectorAll('.modal-close');
+            const modalContent = modal.querySelector('.modal-content');
+
+            const open = () => {
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                modalContent.classList.remove('scale-95');
+            };
+
+            const close = () => {
+                modalContent.classList.add('scale-95');
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('pointer-events-none'), 250);
+            };
+
+            if(openBtn) openBtn.addEventListener('click', open);
+            closeBtns.forEach(btn => btn.addEventListener('click', close));
+            modal.addEventListener('click', e => { if (e.target === modal) close(); });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupModal('createTeamModal', 'createTeamBtn');
+            setupModal('joinCodeModal', 'joinCodeBtn');
+            
+            // Emblem Picker Logic
+            const emblemPicker = document.querySelector('#createTeamModal .grid');
+            if(emblemPicker){
+                const emblems = emblemPicker.querySelectorAll('.emblem-picker-item');
+                emblems.forEach(emblem => {
+                    emblem.addEventListener('click', () => {
+                        emblems.forEach(e => e.classList.remove('selected'));
+                        emblem.classList.add('selected');
+                    });
+                });
+            }
+        });
+
+        // Close all modals with Escape key
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                document.querySelectorAll('.modal').forEach(modal => {
+                    if (!modal.classList.contains('pointer-events-none')) {
+                        modal.querySelector('.modal-content').classList.add('scale-95');
+                        modal.classList.add('opacity-0');
+                        setTimeout(() => modal.classList.add('pointer-events-none'), 250);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -41,6 +42,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS = [
     "core.apps.CoreConfig",
+    "social.apps.SocialConfig",
     "django.contrib.admin",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -72,6 +74,7 @@ TEMPLATES = [
         "DIRS": [
             os.path.join(BASE_DIR, 'templates'),
             os.path.join(BASE_DIR, 'core/components'),
+            os.path.join(BASE_DIR, 'social/templates'),
         ],
         "APP_DIRS": False,
         "OPTIONS": {
@@ -146,7 +149,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
-STATICFILES_DIRS = [BASE_DIR / "static", ]
+STATICFILES_DIRS = [
+    BASE_DIR.parent / 'static',
+]
 
 
 # Default primary key field type

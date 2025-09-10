@@ -54,17 +54,19 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.admindocs",
     'django.contrib.auth',
-    'django_quill',
+    # 'django_quill',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'common.apps.CommonConfig',  # Add common app
-    'base.apps.BaseConfig',
-    'food.apps.FoodConfig',
-    'fitness.apps.FitnessConfig',
-    'gamification.apps.GamificationConfig',  # New gamification app
-    'setup_wizard.apps.SetupWizardConfig',  # Setup Wizard app
+    # 'common.apps.CommonConfig',  # Add common app
+    # 'base.apps.BaseConfig',
+    # 'food.apps.FoodConfig',
+    # 'fitness.apps.FitnessConfig',
+    # 'gamification.apps.GamificationConfig',  # New gamification app
+    # 'setup_wizard.apps.SetupWizardConfig',  # Setup Wizard app
+    'social',
+    'social.apps.SocialConfig',
     'sass_processor',
     'django_cotton',
     'django_components',

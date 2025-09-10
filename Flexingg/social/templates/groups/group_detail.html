@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ group.name }}</title>
+</head>
+<body>
+    <h1>{{ group.name }}</h1>
+    <p>{{ group.description }}</p>
+    <h2>Members</h2>
+    <ul>
+    {% for member in members %}
+        <li>{{ member.user.username }} ({{ member.role }})</li>
+    {% endfor %}
+    </ul>
+    {% if not is_member %}
+        <a href="{% url 'groups:join_group' group.id %}">Join Group</a>
+    {% else %}
+        <a href="{% url 'groups:leave_group' group.id %}">Leave Group</a>
+    {% endif %}
+    <a href="{% url 'groups:group_list' %}">Back to Groups</a>
+</body>
+</html>
