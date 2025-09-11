@@ -15,5 +15,19 @@
             <p class="font-pixel text-2xl text-white mt-2">12k lbs</p>
             <p class="text-xs text-gray-400">Total Volume</p>
         </div>
+
+        <!-- Cardio Steps -->
+        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
+            <p class="font-pixel text-sm text-cyan-300">STEPS</p>
+            <p class="font-pixel text-2xl text-white mt-2">{{ todays_steps|default:0|intcomma }}</p>
+            <p class="text-xs text-gray-400">STEPS TODAY</p>
+        </div>
+
+        <!-- Lifting Calories -->
+        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
+            <p class="font-pixel text-sm text-red-400">CALORIES</p>
+            <p class="font-pixel text-2xl text-white mt-2">{{ todays_lifting_calories|default:0|intcomma }}</p>
+            <p class="text-xs text-gray-400">KCAL BURNED</p>
+        </div>
     </div>
 </div>
