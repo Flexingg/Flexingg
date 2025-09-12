@@ -5,4 +5,6 @@ class Leaderboard(component.Component):
     template_name = "leaderboard/template.html"
 
     def get_context_data(self, **kwargs):
-        return super().get_context_data(**kwargs)
+        context = super().get_context_data(**kwargs) or {}
+        context.update(kwargs)
+        return context

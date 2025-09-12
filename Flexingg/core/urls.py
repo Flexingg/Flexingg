@@ -22,4 +22,8 @@ urlpatterns = [
     path('api/steps/chart-data/', get_steps_chart_data, name='steps-chart-data'),
     # Sweat Score Chart Data URL
     path('api/sweat-score/chart-data/', get_sweat_score_chart_data, name='sweat-score-chart-data'),
+
+    # Leaderboards
+    path('leaderboards/', lambda request: redirect('fitness:leaderboards', permanent=False, metric='cardiocoins', period='all'), name='leaderboards_default'),
+    path('leaderboards/<str:metric>/<str:period>/', LeaderboardView.as_view(), name='leaderboards'),
 ]

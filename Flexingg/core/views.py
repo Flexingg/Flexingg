@@ -1335,3 +1335,111 @@ class DisconnectGarminView(View):
             messages.success(request, 'Garmin Connect disconnected successfully!')
         
         return redirect('fitness:settings')
+
+
+from django.db.models import F, Q
+from social.models import Friendship as SocialFriendship, Group
+from django.shortcuts import get_object_or_404
+
+
+class LeaderboardView(LoginRequiredMixin, TemplateView):
+    template_name = 'leaderboards.html'
+
+    def get_context_data(self, **kwargs):
+        metric = self.kwargs['metric']
+        period = self.kwargs['period']
+        scope = self.request.GET.get('scope', 'global')
+        group_id = self.request.GET.get('group_id')
+
+        # Validate metric
+        valid_metrics = ['steps', 'calories', 'cardiocoins', 'gymgems']
+        if metric not in valid_metrics:
+            # Redirect to default or raise 404
+            from django.shortcuts import redirect
+            return redirect('fitness:leaderboards', metric='cardiocoins', period='all')
+
+        # Calculate cutoff for period
+        now = timezone.now()
+        if period == 'all':
+            cutoff = date(2000, 1, 1)
+        elif period == 'week':
+            cutoff = now - timedelta(days=7)
+        elif period == 'month':
+            cutoff = now - timedelta(days=30)
+        else:
+            # Invalid period, default to all
+            cutoff = date(2000, 1, 1)
+            period = 'all'
+
+        # Base queryset
+        users = UserProfile.objects.all()
+
+        # Filter by scope
+        if scope == 'friends':
+            friendships = SocialFriendship.objects.filter(
+                (Q(from_user=self.request.user) | Q(to_user=self.request.user)) &
+                Q(status='accepted')
+            ).values_list('from_user_id', flat=True).distinct()
+            friend_ids = list(friendships) + list(
+                SocialFriendship.objects.filter(
+                    (Q(from_user=self.request.user) | Q(to_user=self.request.user)) &
+                    Q(status='accepted')
+                ).values_list('to_user_id', flat=True).distinct()
+            )
+            friend_ids = list(set(friend_ids))  # Remove duplicates
+            if self.request.user.id in friend_ids:
+                friend_ids.remove(self.request.user.id)
+            users = users.filter(id__in=friend_ids)
+        elif scope == 'group' and group_id:
+            group = get_object_or_404(Group, id=group_id)
+            # Check if user is in group
+            if not group.members.filter(id=self.request.user.id).exists():
+                # Redirect or error
+                from django.shortcuts import redirect
+                return redirect('fitness:leaderboards', metric=metric, period=period)
+            users = group.members.all()
+
+        # Annotate value based on metric
+        if metric == 'steps':
+            value_expr = Sum('daily_steps__total_steps', filter=Q(daily_steps__calendar_date__gte=cutoff))
+            users = users.annotate(value=value_expr)
+        elif metric == 'calories':
+            value_expr = Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__gte=cutoff))
+            users = users.annotate(value=value_expr)
+        elif metric == 'cardiocoins':
+            users = users.annotate(value=F('cardio_coins'))
+        elif metric == 'gymgems':
+            users = users.annotate(value=F('gym_gems'))
+
+        # For balances, no date filter needed
+        # Filter out users with null value
+        users = users.filter(value__isnull=False).order_by('-value', 'username')
+
+        # Assign ranks
+        ranked_users = []
+        for i, user in enumerate(users, 1):
+            user_obj = user
+            user_obj.rank = i
+            user_obj.metric_value = user.value
+            ranked_users.append(user_obj)
+
+        # Pagination for list starting from 4th
+        from django.core.paginator import Paginator
+        list_users = ranked_users[3:]
+        paginator = Paginator(list_users, 10)
+        page_number = self.request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+
+        top3 = ranked_users[:3]
+
+        context = super().get_context_data(**kwargs)
+        context.update({
+            'top3': top3,
+            'page_obj': page_obj,
+            'metric': metric,
+            'period': period,
+            'scope': scope,
+            'group_id': group_id,
+        })
+
+        return context

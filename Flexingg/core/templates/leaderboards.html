@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load component_tags %}
+
+{% block title %}Leaderboards - Flexin.gg{% endblock %}
+
+{% block extra_css %}
+<style>
+    .font-pixel {
+        font-family: 'Press Start 2P', cursive;
+    }
+    .pixel-border {
+        border: 4px solid #444;
+        box-shadow: 
+            inset -4px -4px 0px 0px #222,
+            inset 4px 4px 0px 0px #555;
+        image-rendering: pixelated;
+    }
+    .pixel-border-light {
+        border: 4px solid #666;
+        box-shadow: 
+            inset -4px -4px 0px 0px #444,
+            inset 4px 4px 0px 0px #888;
+        image-rendering: pixelated;
+    }
+    .tab-active {
+        background-color: #2a2a2a;
+        border-bottom: 4px solid #00f5d4;
+        color: #00f5d4;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 max-w-4xl">
+    <!-- Header -->
+    <h1 class="font-pixel text-2xl text-center text-white mb-8">LEADERBOARDS</h1>
+
+    <!-- Controls -->
+    <div class="bg-[#2a2a2a] pixel-border p-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Metric Tabs -->
+            <div class="flex flex-wrap justify-center md:justify-start gap-2">
+                <a href="{% url 'fitness:leaderboards' metric='steps' period=period %}" class="px-4 py-2 font-pixel text-sm bg-gray-700 hover:bg-gray-600 rounded" {% if metric == 'steps' %}class="tab-active"{% endif %}>Steps</a>
+                <a href="{% url 'fitness:leaderboards' metric='calories' period=period %}" class="px-4 py-2 font-pixel text-sm bg-gray-700 hover:bg-gray-600 rounded" {% if metric == 'calories' %}class="tab-active"{% endif %}>Calories</a>
+                <a href="{% url 'fitness:leaderboards' metric='cardiocoins' period=period %}" class="px-4 py-2 font-pixel text-sm bg-gray-700 hover:bg-gray-600 rounded" {% if metric == 'cardiocoins' %}class="tab-active"{% endif %}>CardioCoins</a>
+                <a href="{% url 'fitness:leaderboards' metric='gymgems' period=period %}" class="px-4 py-2 font-pixel text-sm bg-gray-700 hover:bg-gray-600 rounded" {% if metric == 'gymgems' %}class="tab-active"{% endif %}>GymGems</a>
+            </div>
+
+            <!-- Period Dropdown -->
+            <div class="flex justify-center md:justify-center">
+                <select class="bg-gray-700 text-white px-4 py-2 font-pixel rounded" onchange="changePeriod(this.value)">
+                    <option value="all" {% if period == 'all' %}selected{% endif %}>All Time</option>
+                    <option value="week" {% if period == 'week' %}selected{% endif %}>Weekly</option>
+                    <option value="month" {% if period == 'month' %}selected{% endif %}>Monthly</option>
+                </select>
+            </div>
+
+            <!-- Scope Dropdown -->
+            <div class="flex justify-center md:justify-end">
+                <select class="bg-gray-700 text-white px-4 py-2 font-pixel rounded" onchange="changeScope(this.value)">
+                    <option value="global" {% if scope == 'global' %}selected{% endif %}>Global</option>
+                    <option value="friends" {% if scope == 'friends' %}selected{% endif %}>Friends</option>
+                    <option value="group" {% if scope == 'group' %}selected{% endif %}>Group</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Group Select -->
+        {% if scope == 'group' %}
+        <div class="mt-4">
+            <select class="bg-gray-700 text-white px-4 py-2 font-pixel rounded" onchange="changeGroup(this.value)">
+                <option value="">Select Group</option>
+                {% for group in user.member_groups.all %}
+                <option value="{{ group.id }}" {% if group_id == group.id|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Leaderboard Component -->
+    {% component 'leaderboard' users=top3 list_users=page_obj.object_list metric=metric %}{% endcomponent %}
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="flex justify-center mt-4">
+        <div class="flex space-x-2">
+            {% if page_obj.has_previous %}
+            <a href="?page=1" class="px-3 py-2 bg-gray-700 text-white font-pixel rounded">First</a>
+            <a href="?page={{ page_obj.previous_page_number }}" class="px-3 py-2 bg-gray-700 text-white font-pixel rounded">Prev</a>
+            {% endif %}
+
+            <span class="px-3 py-2 bg-gray-600 text-white font-pixel rounded">{{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}" class="px-3 py-2 bg-gray-700 text-white font-pixel rounded">Next</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}" class="px-3 py-2 bg-gray-700 text-white font-pixel rounded">Last</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function changePeriod(period) {
+    window.location.href = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope={{ scope }}&group_id={{ group_id }}';
+}
+
+function changeScope(scope) {
+    let url = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope=' + scope;
+    if ('{{ group_id }}') url += '&group_id={{ group_id }}';
+    window.location.href = url;
+}
+
+function changeGroup(groupId) {
+    let url = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope=group&group_id=' + groupId;
+    window.location.href = url;
+}
+</script>
+{% endblock %}

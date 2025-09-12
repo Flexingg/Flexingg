@@ -28,9 +28,9 @@
             <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2v6h3V2H2zm5 0v10h3V2H7zm5 0v6h3V2h-3z"/></svg>
             <span class="text-sm font-pixel ml-3">Dash</span>
         </a>
-        <a href="#" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
-            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M1 14h14V5H1v9zm1-1h12V6H2v7z"/><path d="M2 5V2h12v3H2zm1-1h10V3H3v1z"/><path d="M5 11h2V8H5v3zm4 0h2V8H9v3z"/></svg>
-            <span class="text-sm font-pixel ml-3">Gym</span>
+        <a href="{% url 'fitness:leaderboards_default' %}" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M2 12h2v8H2v-8zm4 0h2v12H6v-12zm4 0h2v16H10v-16zM4 0v2h8V0H4z"/></svg>
+            <span class="text-sm font-pixel ml-3">Leaderboards</span>
         </a>
         <a href="{% url 'friends:friend_list' %}" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
             <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
@@ -56,9 +56,9 @@
         <svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
         <span class="text-xs font-pixel mt-1">Friends</span>
     </a>
-    <a href="#" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
-        <svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M1 14h14V5H1v9zm1-1h12V6H2v7z"/><path d="M2 5V2h12v3H2zm1-1h10V3H3v1z"/><path d="M5 11h2V8H5v3zm4 0h2V8H9v3z"/></svg>
-        <span class="text-xs font-pixel mt-1">Gym</span>
+    <a href="{% url 'fitness:leaderboards_default' %}" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
+        <svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M2 12h2v8H2v-8zm4 0h2v12H6v-12zm4 0h2v16H10v-16zM4 0v2h8V0H4z"/></svg>
+        <span class="text-xs font-pixel mt-1">Leaderboards</span>
     </a>
     <a href="{% url 'groups:group_list' %}" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
         <svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor"><path d="M3 15V1h1v3h8V1h1v14H3zM4 2v2h8V2H4z"/><path d="M5 13h6V6H5v7zm1-1h4V7H6v5z"/><path d="M2 5h1v2H2V5zm11 0h1v2h-1V5z"/></svg>
