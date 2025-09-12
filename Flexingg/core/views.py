@@ -14,7 +14,7 @@ from .forms import SignUpForm, LoginForm, ProfileForm
 from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse, StreamingHttpResponse, FileResponse
 from django.views import View
-from .models import Garmin_Auth, GarminDailySteps, GarminActivity, SweatScoreWeights, UserProfile, Friendship
+from .models import Garmin_Auth, GarminDailySteps, GarminActivity, SweatScoreWeights, UserProfile, Friendship, DailySteps
 from .models import *  # JWT, Notification, Relationship
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
@@ -143,17 +143,17 @@ class HomeView(TemplateView):
                     context['sync_user_id'] = profile.id
 
             # Calculate today's total calories from the current user's Garmin activities
-            today = timezone.now().date()
+            today = timezone.localtime().date()
             todays_calories = GarminActivity.objects.filter(
                 user=self.request.user,
                 start_time_utc__date=today
             ).aggregate(total=Sum('calories'))['total'] or 0
             context['todays_total_calories'] = todays_calories
 
-            todays_steps = GarminDailySteps.objects.filter(
+            todays_steps = DailySteps.objects.filter(
                 user=self.request.user,
-                date=today
-            ).aggregate(total=Sum('steps'))['total'] or 0
+                calendar_date=today
+            ).aggregate(total=Sum('total_steps'))['total'] or 0
             context['todays_steps'] = todays_steps
 
             context['todays_lifting_calories'] = 0
@@ -234,7 +234,7 @@ class SyncGarminView(LoginRequiredMixin, View):
 
         # Determine sync range from POST data, but limit to last 30 days for manual sync to prevent timeout
         date_range = request.POST.get('date_range', 'current_month')
-        end_date = timezone.now().date()
+        end_date = timezone.localtime().date()
         max_days = 30  # Limit for manual sync
         start_date = end_date.replace(day=1)
         activity_limit = 500
@@ -273,7 +273,7 @@ class BackgroundGarminSyncView(LoginRequiredMixin, View):
 
     def post(self, request, *args, **kwargs):
         try:
-            garmar_auth = Garmin_Auth.objects.get(user=request.user)
+            garmin_auth = Garmin_Auth.objects.get(user=request.user)
         except Garmin_Auth.DoesNotExist:
             return JsonResponse({
                 'success': False,
@@ -299,7 +299,7 @@ class BackgroundGarminSyncView(LoginRequiredMixin, View):
         logger.info(f"Background Garmin sync triggered for user {request.user.id} at {now}")
 
         # Default range for background sync: current month
-        end_date = now.date()
+        end_date = timezone.localtime().date()
         start_date = end_date.replace(day=1)
         activity_limit = 500
 
@@ -667,7 +667,7 @@ def get_steps_chart_data(request):
     range_param = request.GET.get('range', 'current_month')
 
     # Calculate date range based on the requested period
-    today = timezone.now().date()
+    today = timezone.localtime().date()
     if range_param == 'current_month':
         start_date = today.replace(day=1)
         end_date = today
@@ -693,17 +693,17 @@ def get_steps_chart_data(request):
         start_date = today.replace(day=1)
         end_date = today
 
-    # Get user's steps data from GarminDailySteps
-    user_steps_records = GarminDailySteps.objects.filter(
+    # Get user's steps data from DailySteps
+    user_steps_records = DailySteps.objects.filter(
         user=request.user,
-        date__range=[start_date, end_date]
-    ).order_by('date')
+        calendar_date__range=[start_date, end_date]
+    ).order_by('calendar_date')
 
     # Aggregate user steps by date
     user_steps_by_date = {}
     for record in user_steps_records:
-        date_key = record.date.isoformat()
-        user_steps_by_date[date_key] = record.steps
+        date_key = record.calendar_date.isoformat()
+        user_steps_by_date[date_key] = record.total_steps
 
     # Make user data cumulative
     cumulative_steps = 0
@@ -733,7 +733,7 @@ def get_steps_chart_data(request):
     all_users_steps = []  # For podium ranking
 
     # Add user's total for ranking
-    user_total_steps = sum(record.steps for record in user_steps_records)
+    user_total_steps = sum(record.total_steps for record in user_steps_records)
     if user_total_steps > 0:
         all_users_steps.append({
             'user_id': request.user.id,
@@ -745,15 +745,15 @@ def get_steps_chart_data(request):
     for friend_id in friend_user_ids:
         try:
             friend = User.objects.get(id=friend_id)
-            friend_steps_records = GarminDailySteps.objects.filter(
+            friend_steps_records = DailySteps.objects.filter(
                 user=friend,
-                date__range=[start_date, end_date]
+                calendar_date__range=[start_date, end_date]
             )
 
             friend_steps_by_date = {}
             for record in friend_steps_records:
-                date_key = record.date.isoformat()
-                friend_steps_by_date[date_key] = record.steps
+                date_key = record.calendar_date.isoformat()
+                friend_steps_by_date[date_key] = record.total_steps
 
             # Always include friends, even if they have no data (they'll show as flat line at 0)
             # Make friend data cumulative with all days in range
@@ -773,7 +773,7 @@ def get_steps_chart_data(request):
             })
 
             # Add to ranking (only if they have steps)
-            friend_total = sum(record.steps for record in friend_steps_records)
+            friend_total = sum(record.total_steps for record in friend_steps_records)
             if friend_total > 0:
                 all_users_steps.append({
                     'user_id': friend.id,
@@ -873,7 +873,7 @@ def get_sweat_score_chart_data(request):
     range_param = request.GET.get('range', 'current_month')
 
     # Calculate date range based on the requested period
-    today = timezone.now().date()
+    today = timezone.localtime().date()
     if range_param == 'current_month':
         start_date = today.replace(day=1)
         end_date = today
@@ -1103,6 +1103,18 @@ def perform_garmin_sync_steps(user, start_date, end_date):
                             defaults={'steps': steps}
                         )
                         if created: steps_synced += 1
+
+                        # Also update DailySteps for general persistence
+                        distance_miles = (steps * 2.2) / 5280.0  # 2.2 ft per step, 5280 ft per mile
+                        daily_obj, daily_created = DailySteps.objects.update_or_create(
+                            user=user,
+                            calendar_date=current_date,
+                            defaults={
+                                'total_steps': steps,
+                                'total_distance': distance_miles
+                            }
+                        )
+                        if daily_created: steps_synced += 1  # Count for overall sync
 
             except Exception as step_err:
                 logger.error(f"Error syncing steps for {current_date} for user {user.id}: {step_err}")

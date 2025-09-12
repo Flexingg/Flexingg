@@ -194,8 +194,11 @@ class DailySteps(models.Model):
     total_distance = models.FloatField(default=0) #Total distance (in miles) based on step count using 2.2 ft per step conversion. Updates each sync.    
     step_goal = models.IntegerField(default=10000)
 
+    class Meta:
+        unique_together = ('user', 'calendar_date')
 
-class Garmin_Auth(models.Model):     
+
+class Garmin_Auth(models.Model):
     user = models.OneToOneField(UserProfile, on_delete=models.CASCADE)
     oauth_token = models.CharField(primary_key=True, max_length=10000) # Store session/token data securely. JSONField is flexible.
     oauth_token_secret = models.CharField(max_length=10000) # DO NOT store the password here.    

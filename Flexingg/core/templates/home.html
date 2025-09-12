@@ -196,188 +196,107 @@
 
 <!-- Background sync script -->
 <script>
-    var garmin_linked = '{{ garmin_linked|yesno:"true,false" }}';  
-    var garmin_sync_needed = '{{ garmin_sync_needed|yesno:"true,false" }}';  
-    var today = '{{ today|date:"Y-m-d" }}';  
-    var yesterday = '{{ yesterday|date:"Y-m-d" }}';  
-    var garmin_next_sync = '{{ garmin_next_sync|default:"" }}'; 
-    var background_garmin_sync_url = '{% url "fitness:background_garmin_sync" %}';  
-    var steps_chart_data_url = '{% url "fitness:steps_chart_data" %}?range=current_month';  
-    var sync_garmin_url = '{% url "fitness:sync_garmin" %}';  
-    var csrfToken = '{{ csrf_token }}';
+    var garmin_auth = {{ garmin_auth|yesno:"true,false" }};
+    var background_garmin_sync_url = '{% url "fitness:background_garmin_sync" %}';
+    var steps_chart_data_url = '{% url "fitness:steps_chart_data" %}?range=current_month';
 
-    console.log('Garmin linked: ' + garmin_linked);
-    console.log('Garmin sync needed: ' + garmin_sync_needed);
-
-    if (garmin_linked) {
-        if (garmin_sync_needed) {
-            console.log('Background sync script loaded - will trigger sync');    
-
-            // Function to refresh all Garmin data displays
-            function refreshGarminData() {
-                console.log('Refreshing Garmin data displays...');
-
-                const stepsElement = document.querySelector('.today-steps-display');
-                if (stepsElement) {
-                    const todaySteps = 15234; // Some calculated value for example
-                    if (todaySteps > 0) {
-                    stepsElement.innerHTML = `<p class="text-lg text-theme-on-surface">Today's Steps: ${Math.round(todaySteps)}</p>`;         
-                    } else {
-                    stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;         
-                    }
-                }
-
-                // Refresh activity count
-                const activityElement = document.querySelector('.activity-count-display'); 
-                if (activityElement) { 
-                    const totalActivities = 12; // Some calculated value for example
-                    if (totalActivities > 0) {
-                    activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;         
-                    } else {
-                    activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         
-                    }
-                }
-
-                // Refresh last sync time
-                const syncElement = document.querySelector('.last-sync-display'); 
-                if (syncElement)  
-                    syncElement.innerHTML = `<p class="text-sm text-theme-on-surface-variant">Last synced: ${new Date().toLocaleString('en-US', { timeZone: 'UTC' })}</p>`; 
-                }
-
-                // Make a request to get fresh steps data
-                fetch(steps_chart_data_url, {method: 'GET', headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value}, credentials: 'same-origin' 
-                }).then(response => response.json()).then(data => {
-                    console.log('Received fresh steps data:', data);
-
-                    // Update today's steps
-                    if (stepsElement) {
-
-                        const todayData = data.user_data.find(item => item.date === today);
-
-                        if (todayData) {
-                            let todaySteps = todayData.steps; 
-                            const yesterdayData = data.user_data.find(item => item.date === yesterday);
-
-                            if (yesterdayData) {
-                                todaySteps = todayData.steps - yesterdayData.steps;
-                            }
-
-                            if (todaySteps > 0) {
-                                stepsElement.innerHTML = `<p class="text-lg text-theme-on-surface">Today's Steps: ${Math.round(todaySteps)}</p>`;        
-                            } else {
-                                stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';;         
-                            }    
-                        } else {
-                            stepsElement.innerHTML = `<p class="text-theme-on-surface-variant">No steps data for today yet.</p>`;        
-                        }    
-                    }
-
-                    // Update activity count (this is approximate based on data length)
-                    if (activityElement) {
-                        const totalActivities = data.user_data.length; // This is not accurate, but better than nothing
-                        if (totalActivities > 0) {
-                            activityElement.innerHTML = `<p class="text-lg text-theme-on-surface">Activities Synced: ${totalActivities}+</p>`;         else {
-                            activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         }    
-                    }
-                }).catch(error => {
-                    console.error('Error refreshing steps data:', error);
-                    // Revert to original state on error
-                    if (stepsElement) {                                   
-                        stepsElement.innerHTML = '<p class="text-theme-on-surface-variant">No steps data for today yet.</p>';         }  
-                    if (activityElement) {
-                        activityElement.innerHTML = `<p class="text-theme-on-surface-variant">No activities synced yet.</p>`;         }    
-                });
-
-                // Update last sync time to current time
-                if (syncElement) {
-                    const now = new Date();
-                    const formattedTime = now.toLocaleString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    });                        
-                    syncElement.innerHTML = `<p class="text-sm text-theme-on-surface-variant">Last synced: ${formattedTime}</p>`; 
-                }      
+    // Function to refresh steps display from chart data
+    function refreshStepsDisplay() {
+        fetch(steps_chart_data_url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Fetched fresh steps data:', data);
+            if (data.user_data && data.user_data.length > 0) {
+                // Calculate local today and yesterday
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-            // Trigger background Garmin sync when page loads
-            document.addEventListener('DOMContentLoaded', function() {
-                console.log('DOM loaded, triggering background Garmin sync...');
-                const csrfTokenElement = document.querySelector('[name=csrfmiddlewaretoken]'); 
-                if (!csrfTokenElement) {
-                    console.error('CSRF token not found!'); 
-                    return;
+                console.log('Local today:', today, 'yesterday:', yesterdayStr);
+
+                const todayData = data.user_data.find(item => item.date === today);
+                let dailySteps = 0;
+                if (todayData) {
+                    dailySteps = todayData.steps;
+                    const yesterdayData = data.user_data.find(item => item.date === yesterdayStr);
+                    if (yesterdayData) {
+                        dailySteps = todayData.steps - yesterdayData.steps;
+                    }
+                    console.log('Calculated daily steps:', dailySteps);
+                } else {
+                    console.log('No data for today:', today);
                 }
 
-                const csrfTokenValue = csrfTokenElement.value;
-                console.log('CSRF token value:', csrfTokenValue);
-                console.log('Making POST request to:', background_garmin_sync_url);
-
-                // First try a simple GET request to test if URL is accessible
-                console.log('Testing URL accessibility with GET request...'); 
-                fetch(background_garmin_sync_url, {
-                    method: 'GET', 
-                    credentials: 'same-origin' 
-                }).then(response => {
-                    console.log('GET test response status:', response.status);
-                    if (response.status === 405) {
-                        console.log('GET not allowed (expected), proceeding with POST');   
-                    } else {
-                        console.log('GET request succeeded - URL is accessible'); 
-                    }   
-                }).catch(error => {
-                    console.error('GET test failed:', error);					
-                });
-
-                // Now make the actual POST request
-
-                // Use FormData for better Django compatibility
-                const formData = new FormData();
-                formData.append('csrfmiddlewaretoken', csrfTokenValue);
-                fetch(background_garmin_sync_url, {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'same-origin'
-                }).then(response => {
-                    console.log('Background sync response status:', response.status);
-                    console.log('Response headers:', response.headers);
-                    if (response.status === 405) {
-                        console.error('Method not allowed - URL might not support POST');  
-                        return response.text();   
-                    }
-                    return response.json(); 
-                }).then(data => {
-                    console.log('Response data:', data);
-                    if (typeof data === 'string') {
-                        console.error('Got HTML error page instead of JSON:', data);
-                        return;
-                    }
-
-                    if (data.success) {
-                        console.log('Background Garmin sync completed successfully');
-                        console.log('Steps synced:', data.steps_synced || 0);
-                        console.log('Activities synced:', data.activities_synced || 0);
-                        // Refresh the display immediately since sync is complete
-                        refreshGarminData();
-
-                    } else if (data.skipped) {
-                        console.log('Garmin sync skipped:', data.reason);
-                    } else {
-                        console.error('Background Garmin sync failed:', data.error);
-                    }
-                }).catch(error => {
-                    console.error('Error triggering background Garmin sync:', error);
-                });)),         });
-        } else {
-            console.log('Background sync not needed - last attempt was recent'); 
-            if (garmin_next_sync) 
-                console.log('Next sync available at: ' + garmin_next_sync); 
-        } 
-    } else {
-        console.log('Garmin not linked - no background sync script loaded'); 
+                const stepsElement = document.getElementById('todays-steps-display');
+                if (stepsElement) {
+                    stepsElement.textContent = Math.max(0, dailySteps).toLocaleString();
+                } else {
+                    console.error('Steps element not found!');
+                }
+            } else {
+                console.log('No user data in response');
+                const stepsElement = document.getElementById('todays-steps-display');
+                if (stepsElement) {
+                    stepsElement.textContent = '0';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching steps data:', error);
+            const stepsElement = document.getElementById('todays-steps-display');
+            if (stepsElement) {
+                stepsElement.textContent = '0';
+            }
+        });
     }
+
+    // Always refresh on load
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, refreshing steps display');
+        refreshStepsDisplay();
+
+        if (garmin_auth) {
+            console.log('Triggering background sync');
+            const formData = new FormData();
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            fetch(background_garmin_sync_url, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            })
+            .then(response => {
+                console.log('Sync response status:', response.status);
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error(`Sync failed with status: ${response.status}`);
+                }
+            })
+            .then(data => {
+                console.log('Sync data:', data);
+                if (data.success || data.skipped) {
+                    console.log('Sync complete/skipped, refreshing display after delay');
+                    setTimeout(refreshStepsDisplay, 1500);  // Increased delay for DB
+                } else {
+                    console.error('Sync error:', data.error);
+                    refreshStepsDisplay();  // Still refresh with current
+                }
+            })
+            .catch(error => {
+                console.error('Sync error:', error);
+                refreshStepsDisplay();  // Fallback refresh
+            });
+        }
+    });
+</script>
 </script>
 
 <!-- Modal functionality script -->
