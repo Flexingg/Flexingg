@@ -1,5 +1,5 @@
 from django_components import component
-from ...models import Garmin_Auth
+from garminconnect.models import Garmin_Auth
 
 @component.register("integrations_section")
 class IntegrationsSection(component.Component):

@@ -1,9 +1,4 @@
-import garth
-from garth.sso import exchange
-from garth.exc import GarthException, GarthHTTPError
 import logging
-import uuid
-import time
 from django.contrib import messages
 from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
@@ -12,18 +7,15 @@ from django.utils import timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse, StreamingHttpResponse, FileResponse
+from django.http import JsonResponse
 from django.views import View
-from .models import Garmin_Auth, GarminDailySteps, GarminActivity, SweatScoreWeights, UserProfile, Friendship, DailySteps
+from .models import SweatScoreWeights, UserProfile, Friendship
+from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
 from .models import *  # JWT, Notification, Relationship
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 User = get_user_model()
-from django.contrib.auth.signals import user_logged_in, user_logged_out
-from django.dispatch import receiver
 from django.utils import html
-from .forms import GarminConnectForm
-from .models import Garmin_Auth, UserProfile
 from decimal import Decimal
 import random
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -31,62 +23,6 @@ from django.db.models import Sum
 import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def ensure_valid_tokens(garmin_auth):
-    """
-    Ensure Garmin tokens are valid by refreshing if expired.
-    Returns True if successful, False otherwise.
-    """
-    if not garmin_auth.expired():
-        return True
-    
-    logger.info(f"Tokens expired for user {garmin_auth.user.id}, refreshing...")
-    try:
-        oauth1_data = {
-            'oauth_token': garmin_auth.oauth_token,
-            'oauth_token_secret': garmin_auth.oauth_token_secret,
-            'mfa_token': getattr(garmin_auth, 'mfa_token', None),
-            'mfa_expiration_timestamp': getattr(garmin_auth, 'mfa_expiration_timestamp', None),
-            'domain': getattr(garmin_auth, 'domain', None),
-        }
-        oauth2_data = {
-            'scope': garmin_auth.scope,
-            'jti': garmin_auth.jti,
-            'token_type': garmin_auth.token_type,
-            'access_token': garmin_auth.access_token,
-            'refresh_token': garmin_auth.refresh_token,
-            'expires_in': garmin_auth.expires_in,
-            'expires_at': garmin_auth.expires_at,
-            'refresh_token_expires_in': getattr(garmin_auth, 'refresh_token_expires_in', None),
-            'refresh_token_expires_at': getattr(garmin_auth, 'refresh_token_expires_at', None),
-        }
-        oauth1_token = garth.auth_tokens.OAuth1Token(**oauth1_data)
-        oauth2_token = garth.auth_tokens.OAuth2Token(**oauth2_data)
-        garth.client.configure(oauth1_token=oauth1_token, oauth2_token=oauth2_token)
-        exchange(oauth1_token, client=garth.client)
-
-        # Update stored tokens
-        garmin_auth.oauth_token = oauth1_token.oauth_token
-        garmin_auth.oauth_token_secret = oauth1_token.oauth_token_secret
-        garmin_auth.mfa_token = getattr(oauth1_token, 'mfa_token', None)
-        garmin_auth.mfa_expiration_timestamp = getattr(oauth1_token, 'mfa_expiration_timestamp', None)
-        garmin_auth.domain = getattr(oauth1_token, 'domain', None)
-        garmin_auth.scope = oauth2_token.scope
-        garmin_auth.jti = oauth2_token.jti
-        garmin_auth.token_type = oauth2_token.token_type
-        garmin_auth.access_token = oauth2_token.access_token
-        garmin_auth.refresh_token = oauth2_token.refresh_token
-        garmin_auth.expires_in = oauth2_token.expires_in
-        garmin_auth.expires_at = oauth2_token.expires_at
-        garmin_auth.refresh_token_expires_in = getattr(oauth2_token, 'refresh_token_expires_in', None)
-        garmin_auth.refresh_token_expires_at = getattr(oauth2_token, 'refresh_token_expires_at', None)
-        garmin_auth.save()
-        logger.info("Token refresh successful")
-        return True
-    except Exception as refresh_err:
-        logger.error(f"Token refresh failed for user {garmin_auth.user.id}: {refresh_err}")
-        return False
-
 
 class HomeView(TemplateView):
     template_name = 'home.html'
@@ -100,48 +36,27 @@ class HomeView(TemplateView):
             context['total_coins'] = profile.cardio_coins
             context['level'] = profile.level
 
-            # Garmin sync debounce logic
+            # Garmin sync debounce logic (updated for async)
             garmin_auth = None
             try:
                 garmin_auth = Garmin_Auth.objects.get(user=profile)
                 context['garmin_auth'] = garmin_auth
             except Garmin_Auth.DoesNotExist:
                 pass  # No auth, skip sync
-
+        
             if garmin_auth:
                 debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
                 threshold = timezone.now() - timedelta(minutes=debounce_minutes)
                 if garmin_auth.last_sync is None or garmin_auth.last_sync < threshold:
-                    # Ensure tokens are valid before syncing
-                    if not ensure_valid_tokens(garmin_auth):
-                        logger.error(f"Failed to refresh tokens for user {profile.id}, skipping sync")
-                        context['garmin_sync_failed'] = True
-                    else:
-                        # Now sync
-                        now = timezone.now()
-                        calculated_start = garmin_auth.last_sync.date() + timedelta(days=1) if garmin_auth.last_sync else now.date() - timedelta(days=30)
-                        start_date = min(calculated_start, now.date())
-                        end_date = now.date() + timedelta(days=1)
-
-                        # Sync steps
-                        steps_result = perform_garmin_sync_steps(profile, start_date, end_date)
-
-                        # Sync activities
-                        activities_result = perform_garmin_sync_activities(profile, limit=500, start_date=start_date, end_date=end_date)
-
-                        # Update last_sync if at least one succeeded
-                        if steps_result.get('success') or activities_result.get('success'):
-                            garmin_auth.last_sync = now
-                            garmin_auth.save(update_fields=['last_sync'])
-                            context['garmin_sync_triggered'] = True
-                            logger.info(f"Garmin sync triggered for user {profile.id}: steps {steps_result.get('steps_synced', 0)}, activities {activities_result.get('activities_synced', 0)}")
-                        else:
-                            logger.error(f"Garmin sync failed for user {profile.id}: steps {steps_result.get('error')}, activities {activities_result.get('error')}")
-                            context['garmin_sync_failed'] = True
-
+                    # Trigger async sync
+                    from garminconnect.tasks import garmin_sync_steps_task, garmin_sync_activities_task
+                    garmin_sync_steps_task.delay(profile.id, start_date=garmin_auth.last_sync.date() + timedelta(days=1) if garmin_auth.last_sync else timezone.now().date() - timedelta(days=30), end_date=timezone.now().date())
+                    garmin_sync_activities_task.delay(profile.id, limit=500, start_date=garmin_auth.last_sync.date() if garmin_auth.last_sync else timezone.now().date() - timedelta(days=30), end_date=timezone.now().date())
+                    context['garmin_sync_triggered'] = True
+        
                     # Set user for sync progress indicator
                     context['sync_user_id'] = profile.id
-
+        
             # Calculate today's total calories from the current user's Garmin activities
             today = timezone.localtime().date()
             todays_calories = GarminActivity.objects.filter(
@@ -150,10 +65,10 @@ class HomeView(TemplateView):
             ).aggregate(total=Sum('calories'))['total'] or 0
             context['todays_total_calories'] = todays_calories
 
-            todays_steps = DailySteps.objects.filter(
+            todays_steps = GarminDailySteps.objects.filter(
                 user=self.request.user,
-                calendar_date=today
-            ).aggregate(total=Sum('total_steps'))['total'] or 0
+                date=today
+            ).aggregate(total=Sum('steps'))['total'] or 0
             context['todays_steps'] = todays_steps
 
             context['todays_lifting_calories'] = 0
@@ -214,120 +129,6 @@ class SignOutView(View):
     def get(self, request):
         logout(request)
         return redirect('fitness:sign_in')
-
-
-class SyncGarminView(LoginRequiredMixin, View):
-    """
-    View to trigger manual Garmin data sync.
-    Handles POST requests to sync steps and activities.
-    """
-
-    def post(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return redirect('fitness:sign_in')
-
-        try:
-            garmin_auth = Garmin_Auth.objects.get(user=request.user)
-        except Garmin_Auth.DoesNotExist:
-            messages.error(request, "Garmin account not linked. Please link your account first.")
-            return redirect('fitness:settings')
-
-        # Determine sync range from POST data, but limit to last 30 days for manual sync to prevent timeout
-        date_range = request.POST.get('date_range', 'current_month')
-        end_date = timezone.localtime().date()
-        max_days = 30  # Limit for manual sync
-        start_date = end_date.replace(day=1)
-        activity_limit = 500
-
-        # Sync steps
-        steps_result = perform_garmin_sync_steps(request.user, start_date, end_date)
-        steps_synced = steps_result.get('steps_synced', 0) if steps_result.get('success') else 0
-
-        # Sync activities
-        activities_result = perform_garmin_sync_activities(request.user, activity_limit)
-        activities_synced = activities_result.get('activities_synced', 0) if activities_result.get('success') else 0
-
-        if steps_result.get('success') and activities_result.get('success'):
-            messages.success(request, f"Sync complete! Synced {steps_synced} step records and {activities_synced} activities for the last 30 days.")
-        else:
-            error_msg = []
-            if not steps_result.get('success'):
-                error_msg.append(f"Steps sync failed: {steps_result.get('error', 'Unknown error')}")
-            if not activities_result.get('success'):
-                error_msg.append(f"Activities sync failed: {activities_result.get('error', 'Unknown error')}")
-            messages.error(request, "Sync failed. Errors: " + "; ".join(error_msg))
-
-        return redirect('fitness:settings')
-
-    def get(self, request, *args, **kwargs):
-        # For GET, perhaps render a sync status or redirect
-        messages.info(request, "Use the sync button to trigger data synchronization.")
-        return redirect('fitness:settings')
-
-
-class BackgroundGarminSyncView(LoginRequiredMixin, View):
-    """
-    API endpoint for background Garmin sync with cooldown check.
-    Returns JSON with sync results or skipped status.
-    """
-
-    def post(self, request, *args, **kwargs):
-        try:
-            garmin_auth = Garmin_Auth.objects.get(user=request.user)
-        except Garmin_Auth.DoesNotExist:
-            return JsonResponse({
-                'success': False,
-                'error': 'Garmin account not linked'
-            }, status=400)
-
-        # Check cooldown (10 minutes = 600 seconds)
-        now = timezone.now()
-        last_attempt = garmin_auth.last_sync_attempt
-        if last_attempt and (now - last_attempt).total_seconds() < 600:
-            next_attempt = (last_attempt + timedelta(minutes=10)).isoformat()
-            return JsonResponse({
-                'success': False,
-                'skipped': True,
-                'reason': 'Sync attempted too recently',
-                'next_attempt': next_attempt
-            })
-
-        # Update last attempt immediately
-        garmin_auth.last_sync_attempt = now
-        garmin_auth.save(update_fields=['last_sync_attempt'])
-
-        logger.info(f"Background Garmin sync triggered for user {request.user.id} at {now}")
-
-        # Default range for background sync: current month
-        end_date = timezone.localtime().date()
-        start_date = end_date.replace(day=1)
-        activity_limit = 500
-
-        # Sync steps
-        steps_result = perform_garmin_sync_steps(request.user, start_date, end_date)
-        steps_synced = steps_result.get('steps_synced', 0) if steps_result.get('success') else 0
-
-        # Sync activities
-        activities_result = perform_garmin_sync_activities(request.user, activity_limit)
-        activities_synced = activities_result.get('activities_synced', 0) if activities_result.get('success') else 0
-
-        if steps_result.get('success') and activities_result.get('success'):
-            return JsonResponse({
-                'success': True,
-                'steps_synced': steps_synced,
-                'activities_synced': activities_synced,
-                'message': f'Synced {steps_synced} steps and {activities_synced} activities'
-            })
-        else:
-            error_msg = []
-            if not steps_result.get('success'):
-                error_msg.append(steps_result.get('error', 'Steps sync failed'))
-            if not activities_result.get('success'):
-                error_msg.append(activities_result.get('error', 'Activities sync failed'))
-            return JsonResponse({
-                'success': False,
-                'error': '; '.join(error_msg)
-            }, status=500)
 
 
 class StepsChartDataView(View):
@@ -536,6 +337,7 @@ def get_calories_chart_data(request):
         end_date = today
 
     # Get user's calories data
+    from garminconnect.models import GarminActivity
     user_activities = GarminActivity.objects.filter(
         user=request.user,
         start_time_utc__date__range=[start_date, end_date],
@@ -693,17 +495,17 @@ def get_steps_chart_data(request):
         start_date = today.replace(day=1)
         end_date = today
 
-    # Get user's steps data from DailySteps
-    user_steps_records = DailySteps.objects.filter(
+    # Get user's steps data from GarminDailySteps
+    user_steps_records = GarminDailySteps.objects.filter(
         user=request.user,
-        calendar_date__range=[start_date, end_date]
-    ).order_by('calendar_date')
+        date__range=[start_date, end_date]
+    ).order_by('date')
 
     # Aggregate user steps by date
     user_steps_by_date = {}
     for record in user_steps_records:
-        date_key = record.calendar_date.isoformat()
-        user_steps_by_date[date_key] = record.total_steps
+        date_key = record.date.isoformat()
+        user_steps_by_date[date_key] = record.steps
 
     # Make user data cumulative
     cumulative_steps = 0
@@ -733,7 +535,7 @@ def get_steps_chart_data(request):
     all_users_steps = []  # For podium ranking
 
     # Add user's total for ranking
-    user_total_steps = sum(record.total_steps for record in user_steps_records)
+    user_total_steps = sum(record.steps for record in user_steps_records)
     if user_total_steps > 0:
         all_users_steps.append({
             'user_id': request.user.id,
@@ -745,15 +547,15 @@ def get_steps_chart_data(request):
     for friend_id in friend_user_ids:
         try:
             friend = User.objects.get(id=friend_id)
-            friend_steps_records = DailySteps.objects.filter(
+            friend_steps_records = GarminDailySteps.objects.filter(
                 user=friend,
-                calendar_date__range=[start_date, end_date]
+                date__range=[start_date, end_date]
             )
 
             friend_steps_by_date = {}
             for record in friend_steps_records:
-                date_key = record.calendar_date.isoformat()
-                friend_steps_by_date[date_key] = record.total_steps
+                date_key = record.date.isoformat()
+                friend_steps_by_date[date_key] = record.steps
 
             # Always include friends, even if they have no data (they'll show as flat line at 0)
             # Make friend data cumulative with all days in range
@@ -773,7 +575,7 @@ def get_steps_chart_data(request):
             })
 
             # Add to ranking (only if they have steps)
-            friend_total = sum(record.total_steps for record in friend_steps_records)
+            friend_total = sum(record.steps for record in friend_steps_records)
             if friend_total > 0:
                 all_users_steps.append({
                     'user_id': friend.id,
@@ -907,6 +709,7 @@ def get_sweat_score_chart_data(request):
 
 
     # Get user's activities data
+    from garminconnect.models import GarminActivity
     user_activities = GarminActivity.objects.filter(
         user=request.user,
         start_time_utc__date__range=[start_date, end_date]
@@ -1040,10 +843,6 @@ def get_sweat_score_chart_data(request):
     }, status=200)
 
 
-def perform_garmin_sync_steps(user, start_date, end_date):
-    """
-    Sync daily steps from Garmin for the given date range.
-    Returns dict with success status and synced count.
     """
     try:
         garmin_auth = Garmin_Auth.objects.get(user=user)
@@ -1129,10 +928,6 @@ def perform_garmin_sync_steps(user, start_date, end_date):
         logger.error(f"Unexpected error during steps sync for user {user.id}: {e}")
         return {'success': False, 'error': str(e)}
 
-def perform_garmin_sync_activities(user, limit=500, start_date=None, end_date=None):
-    """
-    Sync recent Garmin activities for the user, optionally filtered by date range.
-    Returns dict with success status and synced count.
     """
     try:
         garmin_auth = Garmin_Auth.objects.get(user=user)
@@ -1413,7 +1208,7 @@ class LeaderboardView(LoginRequiredMixin, TemplateView):
 
         # Annotate value based on metric
         if metric == 'steps':
-            value_expr = Sum('daily_steps__total_steps', filter=Q(daily_steps__calendar_date__gte=cutoff))
+            value_expr = Sum('garmin_daily_steps__steps', filter=Q(garmin_daily_steps__date__gte=cutoff))
             users = users.annotate(value=value_expr)
         elif metric == 'calories':
             value_expr = Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__gte=cutoff))
@@ -1455,3 +1250,32 @@ class LeaderboardView(LoginRequiredMixin, TemplateView):
         })
 
         return context
+
+
+class BackgroundGarminSyncView(LoginRequiredMixin, View):
+    def post(self, request):
+        profile = request.user
+        garmin_auth = None
+        try:
+            garmin_auth = Garmin_Auth.objects.get(user=profile)
+        except Garmin_Auth.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'No Garmin auth found'})
+
+        if garmin_auth:
+            debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
+            threshold = timezone.now() - timedelta(minutes=debounce_minutes)
+            if garmin_auth.last_sync is None or garmin_auth.last_sync < threshold:
+                # Trigger async sync
+                from garminconnect.tasks import garmin_sync_steps_task, garmin_sync_activities_task
+                start_date = garmin_auth.last_sync.date() + timedelta(days=1) if garmin_auth.last_sync else timezone.now().date() - timedelta(days=30)
+                end_date = timezone.now().date()
+                garmin_sync_steps_task.delay(profile.id, start_date=start_date, end_date=end_date)
+                garmin_sync_activities_task.delay(profile.id, limit=500, start_date=start_date, end_date=end_date)
+                # Update last_sync immediately after queuing
+                garmin_auth.last_sync = timezone.now()
+                garmin_auth.save(update_fields=['last_sync'])
+                return JsonResponse({'success': True})
+            else:
+                return JsonResponse({'skipped': True})
+        else:
+            return JsonResponse({'success': False, 'error': 'No Garmin auth'})

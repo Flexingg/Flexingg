@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0002_garmin_auth_usercolorpreference_activity_dailystep'),
+        ('core', '0001_initial'),
     ]
 
     operations = [

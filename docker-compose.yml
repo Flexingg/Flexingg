@@ -39,7 +39,7 @@ services:
     build: .
     command: >
       sh -c "cd Flexingg &&
-             celery -A Flexingg worker -l info"
+             celery -A celery_app worker -l info"
     volumes:
       - .:/app
     environment:
@@ -57,7 +57,7 @@ services:
     build: .
     command: >
       sh -c "cd Flexingg &&
-             celery -A Flexingg beat -l info"
+             celery -A celery_app beat -l info"
     volumes:
       - .:/app
     environment:

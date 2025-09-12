@@ -10,6 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('core', '0007_create_superuser'),
+        ('garminconnect', '0001_initial'),
     ]
 
     operations = [
@@ -20,7 +21,7 @@ class Migration(migrations.Migration):
                 ('currency_type', models.CharField(choices=[('cardio_coins', 'Cardio Coins'), ('gym_gems', 'Gym Gems')], max_length=20)),
                 ('amount', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('garmin_activity', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transactions', to='core.garminactivity')),
+                ('garmin_activity', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='transactions', to='garminconnect.garminactivity')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='transactions', to=settings.AUTH_USER_MODEL)),
             ],
             options={

@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0005_alter_garminactivity_options_and_more'),
+        ('core', '0003_populate_usercolorpreference_uuid'),
     ]
 
     operations = [

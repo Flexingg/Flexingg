@@ -6,7 +6,7 @@ from django.contrib.admin.sites import AlreadyRegistered, AdminSite
 
 # Register your models here.
 app_models = []
-apps_to_register = ['social']
+apps_to_register = ['garminconnect']
 
 for app_name in apps_to_register:
     try:

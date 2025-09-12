@@ -3,12 +3,12 @@
         <span class="font-pixel text-sm text-white">Garmin Connect</span>
         {% if garmin_connected %}
         <div class="flex space-x-2">
-            <form method="post" action="{% url 'fitness:sync_garmin' %}" style="display: inline;">
+            <form method="post" action="{% url 'garminconnect:sync_garmin' %}" style="display: inline;">
                 {% csrf_token %}
                 <input type="hidden" name="date_range" value="current_month"/>
                 <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">SYNC</button>
             </form>
-            <form method="post" action="{% url 'fitness:disconnect_garmin' %}" style="display: inline;">
+            <form method="post" action="{% url 'garminconnect:disconnect_garmin' %}" style="display: inline;">
                 {% csrf_token %}
                 <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
             </form>
@@ -38,21 +38,21 @@
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
         <h3 class="font-pixel text-lg text-white mb-4">Connect Garmin Connect</h3>
         <p class="font-pixel text-sm text-gray-300 mb-4">We do not store your password, only the OAuth token.</p>
-        <form method="post" action="{% url 'fitness:connect_garmin' %}" class="w-full h-full"> 
+        <form method="post" action="{% url 'garminconnect:connect_garmin' %}" class="w-full h-full">
             {% csrf_token %}
-            <div class="mb-4"> 
+            <div class="mb-4">
                 <label class="font-pixel text-sm text-white block mb-1">Email</label>
                 <input type="email" name="garmin_email" required class="pixel-input w-full" placeholder="your.email@garmin.com"/>
-            </div> 
-            <div class="mb-4"> 
+            </div>
+            <div class="mb-4">
                 <label class="font-pixel text-sm text-white block mb-1">Password</label>
                 <input type="password" name="garmin_password" required class="pixel-input w-full" placeholder="Password"/>
             </div>
-            <div class="flex justify-end space-x-2"> 
+            <div class="flex justify-end space-x-2">
                 <button type="button" onclick="toggleGarminModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
                 <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
             </div>
-        </form> 
+        </form>
     </div>
 </div>
 {% endif %}

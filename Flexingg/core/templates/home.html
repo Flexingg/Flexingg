@@ -198,10 +198,20 @@
 <script>
     var garmin_auth = {{ garmin_auth|yesno:"true,false" }};
     var background_garmin_sync_url = '{% url "fitness:background_garmin_sync" %}';
-    var steps_chart_data_url = '{% url "fitness:steps_chart_data" %}?range=current_month';
+    var steps_chart_data_url = '{% url "fitness:steps-chart-data" %}?range=current_month';
 
     // Function to refresh steps display from chart data
     function refreshStepsDisplay() {
+        const stepsElement = document.getElementById('todays-steps-display');
+        if (!stepsElement) {
+            console.error('Steps element not found!');
+            return;
+        }
+        // Get initial value
+        const initialText = stepsElement.textContent.replace(/,/g, '');
+        const initialSteps = parseInt(initialText) || 0;
+        console.log('Initial steps value:', initialSteps);
+
         fetch(steps_chart_data_url, {
             method: 'GET',
             credentials: 'same-origin',
@@ -215,10 +225,11 @@
             if (data.user_data && data.user_data.length > 0) {
                 // Calculate local today and yesterday
                 const now = new Date();
-                const today = now.toISOString().split('T')[0];
+                const pad = (n) => n.toString().padStart(2, '0');
+                const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
                 const yesterday = new Date(now);
                 yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = yesterday.toISOString().split('T')[0];
+                const yesterdayStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
 
                 console.log('Local today:', today, 'yesterday:', yesterdayStr);
 
@@ -235,26 +246,20 @@
                     console.log('No data for today:', today);
                 }
 
-                const stepsElement = document.getElementById('todays-steps-display');
-                if (stepsElement) {
+                // Only update if new value is positive or at least matches initial (to avoid overwriting with 0 during sync)
+                if (dailySteps > 0 || dailySteps >= initialSteps) {
                     stepsElement.textContent = Math.max(0, dailySteps).toLocaleString();
+                    console.log('Updated steps to:', dailySteps);
                 } else {
-                    console.error('Steps element not found!');
+                    console.log('Keeping initial steps (fetch gave 0 or less during potential sync)');
                 }
             } else {
-                console.log('No user data in response');
-                const stepsElement = document.getElementById('todays-steps-display');
-                if (stepsElement) {
-                    stepsElement.textContent = '0';
-                }
+                console.log('No user data in response, keeping initial');
             }
         })
         .catch(error => {
             console.error('Error fetching steps data:', error);
-            const stepsElement = document.getElementById('todays-steps-display');
-            if (stepsElement) {
-                stepsElement.textContent = '0';
-            }
+            console.log('Keeping initial steps due to fetch error');
         });
     }
 
@@ -284,15 +289,15 @@
                 console.log('Sync data:', data);
                 if (data.success || data.skipped) {
                     console.log('Sync complete/skipped, refreshing display after delay');
-                    setTimeout(refreshStepsDisplay, 1500);  // Increased delay for DB
+                    setTimeout(refreshStepsDisplay, 5000);  // Increased delay for async sync completion
                 } else {
                     console.error('Sync error:', data.error);
-                    refreshStepsDisplay();  // Still refresh with current
+                    // Don't refresh on error to avoid overwriting with stale data
                 }
             })
             .catch(error => {
                 console.error('Sync error:', error);
-                refreshStepsDisplay();  // Fallback refresh
+                // Don't refresh on error to avoid overwriting with stale data
             });
         }
     });

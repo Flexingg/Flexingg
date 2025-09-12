@@ -10,3 +10,4 @@ python-dotenv==1.0.1
 celery==5.4.0
 django-celery-beat
 django-celery-results
+redis>=3.4.1

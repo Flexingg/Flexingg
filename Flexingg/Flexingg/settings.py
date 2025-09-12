@@ -42,6 +42,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS = [
     "core.apps.CoreConfig",
+    "garminconnect.apps.GarminconnectConfig",
     "social.apps.SocialConfig",
     "django.contrib.admin",
     "django.contrib.contenttypes",
@@ -98,7 +99,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "flexin.gg.wsgi.application"
+WSGI_APPLICATION = "Flexingg.wsgi.application"
 
 
 # Database

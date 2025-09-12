@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 import os
 
 def generate_superuser(apps, schema_editor):
-    User = get_user_model()
+    User = apps.get_model('core', 'UserProfile')
     
     su_name = os.getenv('DJANGO_SU_NAME', 'admin')
     su_email = os.getenv('DJANGO_SU_EMAIL', '')
