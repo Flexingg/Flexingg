@@ -1,14 +1,13 @@
 {% load static %}
 
-<div class="flex items-center space-x-3">
-    <!-- Dummy Notification Button -->
-    {% component "button" text="🔔" variant="secondary" %}{% endcomponent %}
+<div class="flex items-center space-x-3 justify-end w-full">
     {% if user.is_authenticated %}
         {% component "coins" user=user currency_type="cardio_coins" %}{% endcomponent %}
         {% component "coins" user=user currency_type="gym_gems" %}{% endcomponent %}
+        <!-- Settings Icon -->
+        {% component "settings_icon" %}{% endcomponent %}
     {% else %}
-        {% component "coins" coins=0 %}{% endcomponent %}
+        <a href="{% url 'fitness:sign_in' %}" class="pixel-button font-pixel text-blue-500 py-1 px-3 rounded text-sm">Sign In</a>
+        <a href="{% url 'fitness:sign_up' %}" class="pixel-button font-pixel text-green-500 py-1 px-3 rounded text-sm">Sign Up</a>
     {% endif %}
-    <!-- Settings Icon -->
-    {% component "settings_icon" %}{% endcomponent %}
 </div>

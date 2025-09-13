@@ -1285,3 +1285,7 @@ class BackgroundGarminSyncView(LoginRequiredMixin, View):
                 return JsonResponse({'skipped': True})
         else:
             return JsonResponse({'success': False, 'error': 'No Garmin auth'})
+
+
+class ComingSoonView(TemplateView):
+    template_name = 'comingsoon.html'

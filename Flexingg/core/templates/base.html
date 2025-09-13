@@ -428,17 +428,7 @@ input[type="password"].pixel-input:focus {
         <div class="desktop-content flex flex-col min-h-screen">
             <header class="sticky top-0 z-50 border-b-4 border-black" style="background-color: #2a2a2a !important;">
                 {% block top_bar_content %}
-                    <div class="p-2 flex justify-between items-center flex-shrink-0 md:justify-end">
-                        <h1 class="font-pixel text-lg text-white tracking-wider md:hidden">FLEXIN.GG</h1>
-                        <div class="flex items-center space-x-3">
-                            <div class="flex items-center">
-                                <!-- Coin Icon -->
-                                {% component "coins" user=request.user %}{% endcomponent %}
-                            </div>
-                            <!-- Notification Icon -->
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M4 14V8h1v6H4zm7 0h2V8H4v3zm1-1h6v1H5v-1z"/><path d="M2 5V2h12v3H2zm1-1h10V3H3v1z"/><path d="M5 11h2V8H5v3zm4 0h2V8H9v3z"/></svg>
-                        </div>
-                    </div>
+                    {% component "top_navigation" %}{% endcomponent %}
                 {% endblock %}
             </header>
 

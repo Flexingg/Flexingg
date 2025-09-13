@@ -28,7 +28,7 @@
             </div>
             <div class="flex gap-4 mt-6">
                 <button type="submit" class="pixel-button w-full p-3 font-pixel text-sm text-green-400">CREATE GROUP</button>
-                <a href="{% url 'groups:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">CANCEL</a>
+                <a href="{% url 'social:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">CANCEL</a>
             </div>
             {% if form.non_field_errors %}
                 <div class="bg-red-900 border border-red-500 p-3 rounded">

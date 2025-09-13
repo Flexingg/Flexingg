@@ -51,11 +51,11 @@
         <h2 class="font-pixel text-lg text-theme-on-surface">ACTIONS</h2>
         <div class="flex gap-4">
             {% if not is_member %}
-            <a href="{% url 'groups:join_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-green-400 text-center">JOIN GROUP</a>
+            <a href="{% url 'social:join_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-green-400 text-center">JOIN GROUP</a>
             {% else %}
-            <a href="{% url 'groups:leave_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-red-500 text-center">LEAVE GROUP</a>
+            <a href="{% url 'social:leave_group' group.id %}" class="pixel-button w-full p-3 font-pixel text-sm text-red-500 text-center">LEAVE GROUP</a>
             {% endif %}
-            <a href="{% url 'groups:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">BACK TO GROUPS</a>
+            <a href="{% url 'social:group_list' %}" class="pixel-button w-full p-3 font-pixel text-sm text-gray-300 text-center">BACK TO GROUPS</a>
         </div>
     </section>
 </main>

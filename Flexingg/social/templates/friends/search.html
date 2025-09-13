@@ -21,7 +21,7 @@
                         <p class="text-xs text-gray-400">Level 42 GymBro</p>
                     </div>
                 </div>
-                <a href="{% url 'friends:send_friend_request' user.id %}" class="pixel-button bg-green-500 text-white px-4 py-2 font-pixel text-sm">Send Request</a>
+                <a href="{% url 'friends/send_friend_request' user.id %}" class="pixel-button bg-green-500 text-white px-4 py-2 font-pixel text-sm">Send Request</a>
             </div>
             {% endfor %}
         </div>
@@ -29,6 +29,6 @@
         <p class="text-gray-400 font-pixel">No users found matching your search.</p>
     {% endif %}
     
-    <a href="{% url 'friends:friend_list' %}" class="block w-full text-center pixel-button p-2 font-pixel text-sm text-white">Back to Friends</a>
+    <a href="{% url 'social:friend_list' %}" class="block w-full text-center pixel-button p-2 font-pixel text-sm text-white">Back to Friends</a>
 </div>
 {% endblock content %}

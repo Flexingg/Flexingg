@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}FLEXIN.GG - Leaderboards{% endblock %}
+{% block title %}Leaderboards{% endblock %}
 
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -151,8 +151,8 @@ body {
 {% block content %}
 <!-- Friends/Groups Links -->
 <nav class="flex justify-center items-center p-4 pixel-border-light">
-    <a href="{% url 'friends:friend_list' %}" class="text-lg text-blue-400 hover:text-blue-300 transition-colors font-pixel pr-6 border-r-2 border-blue-500">FRIENDS</a>
-    <a href="{% url 'groups:group_list' %}" class="text-lg text-green-400 hover:text-green-300 transition-colors font-pixel pl-6">GROUPS</a>
+    <a href="{% url 'social:friend_list' %}" class="text-lg text-blue-400 hover:text-blue-300 transition-colors font-pixel pr-6 border-r-2 border-blue-500">FRIENDS</a>
+    <a href="{% url 'social:group_list' %}" class="text-lg text-green-400 hover:text-green-300 transition-colors font-pixel pl-6">GROUPS</a>
 </nav>
 
 <!-- Category Scroller -->

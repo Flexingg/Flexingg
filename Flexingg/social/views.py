@@ -26,31 +26,31 @@ def send_friend_request(request, user_id):
 def accept_friend_request(request, request_id):
     friendship = get_object_or_404(Friendship, id=request_id)
     if friendship.to_user != request.user:
-        return redirect('friends:friend_requests')
+        return redirect('social:friend_requests')
     friendship.status = 'accepted'
     friendship.save()
-    return redirect('friends:friend_list')
+    return redirect('social:friend_list')
 
 @login_required
 def decline_friend_request(request, request_id):
     friendship = get_object_or_404(Friendship, id=request_id)
     if friendship.to_user != request.user:
-        return redirect('friends:friend_requests')
+        return redirect('social:friend_requests')
     friendship.delete()
-    return redirect('friends:friend_requests')
+    return redirect('social:friend_requests')
 
 @login_required
 def remove_friend(request, user_id):
     target_user = get_object_or_404(UserProfile, id=user_id)
     if target_user == request.user:
-        return redirect('friends:friend_list')
+        return redirect('social:friend_list')
     friendship1 = Friendship.objects.filter(from_user=request.user, to_user=target_user, status='accepted').first()
     friendship2 = Friendship.objects.filter(from_user=target_user, to_user=request.user, status='accepted').first()
     if friendship1:
         friendship1.delete()
     if friendship2:
         friendship2.delete()
-    return redirect('friends:friend_list')
+    return redirect('social:friend_list')
 
 @login_required
 def friend_list(request):
@@ -73,7 +73,7 @@ def search_users(request):
     if request.method == 'POST':
         q = request.POST.get('q', '').strip()
         if not q:
-            return redirect('friends:friend_list')
+            return redirect('social:friend_list')
         
         users = UserProfile.objects.filter(
             Q(username__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q)
@@ -101,7 +101,7 @@ def search_users(request):
         
         return render(request, 'friends/search.html', {'users': users, 'query': q})
     else:
-        return redirect('friends:friend_list')
+        return redirect('social:friend_list')
 
 @login_required
 def group_list(request):
@@ -132,7 +132,7 @@ def create_group(request):
             group.creator = request.user
             group.save()
             GroupMembership.objects.create(user=request.user, group=group, role='admin')
-            return redirect('groups:group_list')
+            return redirect('social:group_list')
     else:
         form = GroupForm()
     return render(request, 'groups/create_group.html', {'form': form})
@@ -143,7 +143,7 @@ def join_group(request, group_id):
     group = get_object_or_404(Group, id=group_id)
     if not GroupMembership.objects.filter(user=request.user, group=group).exists():
         GroupMembership.objects.create(user=request.user, group=group)
-    return redirect('groups:group_detail', group_id=group.id)
+    return redirect('social:group_detail', group_id=group.id)
 
 
 @login_required
@@ -152,10 +152,10 @@ def leave_group(request, group_id):
     membership = GroupMembership.objects.filter(user=request.user, group=group).first()
     if membership:
         membership.delete()
-    return redirect('groups:group_list')
+    return redirect('social:group_list')
 
 @login_required
-def leaderboard(request):
+def social_main(request):
     from core.models import UserProfile
     from garminconnect.models import GarminDailySteps, GarminActivity
     from django.db.models import Sum, F, Value, IntegerField, DecimalField
@@ -247,7 +247,7 @@ def leaderboard(request):
     # Pass user groups for group selection
     user_groups = list(request.user.member_groups.values('id', 'name')) if current_scope == 'group' and not group_id else []
 
-    return render(request, 'social/leaderboard.html', {
+    return render(request, 'social/main.html', {
         'user': request.user,
         'users': users,
         'list_users': list_users,

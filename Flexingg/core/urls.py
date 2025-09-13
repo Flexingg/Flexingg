@@ -25,4 +25,5 @@ urlpatterns = [
     # Leaderboards
     path('leaderboards/', lambda request: redirect('fitness:leaderboards', permanent=False, metric='cardiocoins', period='all'), name='leaderboards_default'),
     path('leaderboards/<str:metric>/<str:period>/', LeaderboardView.as_view(), name='leaderboards'),
+    path('comingsoon/', ComingSoonView.as_view(), name='comingsoon'),
 ]
