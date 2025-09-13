@@ -11,3 +11,6 @@ celery==5.4.0
 django-celery-beat
 django-celery-results
 redis>=3.4.1
+django-storages==1.14.6
+boto3==1.34.0
+Pillow==10.4.0

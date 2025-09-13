@@ -4,4 +4,5 @@ from .views import *
 urlpatterns = [
     path('friends/', include('social.friends.urls')),
     path('groups/', include('social.groups.urls')),
+    path('leaderboard/', leaderboard, name='leaderboard'),
 ]

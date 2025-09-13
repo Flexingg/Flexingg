@@ -7,7 +7,7 @@ from django.dispatch import receiver
 
 
 class UserProfile(AbstractUser):
-    avatar = models.CharField(max_length=255, blank=True)      # Binary upload later
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     gym_gems = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Currency used in store
     cardio_coins = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Currency used for skill upgrades and premium content
     str_stat = models.IntegerField(default=0)

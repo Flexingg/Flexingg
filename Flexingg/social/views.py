@@ -153,3 +153,109 @@ def leave_group(request, group_id):
     if membership:
         membership.delete()
     return redirect('groups:group_list')
+
+@login_required
+def leaderboard(request):
+    from core.models import UserProfile
+    from garminconnect.models import GarminDailySteps, GarminActivity
+    from django.db.models import Sum, F, Value, IntegerField, DecimalField
+    from django.db.models.functions import Coalesce
+    from django.db.models import FloatField
+    from core.models import Transaction
+    from datetime import timedelta, date
+    from django.utils import timezone
+
+    current_category = request.GET.get('category', 'steps')
+    current_history = request.GET.get('history', 'All Time')
+    current_scope = request.GET.get('scope', 'Global')
+    group_id = request.GET.get('group_id')
+
+    # Calculate cutoff based on history
+    now = timezone.now()
+    if current_history == 'All Time':
+        cutoff = date(2000, 1, 1)
+    elif current_history == 'Weekly':
+        cutoff = now.date() - timedelta(days=7)
+    elif current_history == 'Monthly':
+        cutoff = now.date() - timedelta(days=30)
+    else:
+        cutoff = date(2000, 1, 1)
+
+    # Base users queryset based on scope
+    if current_scope == 'friends':
+        users = UserProfile.objects.filter(
+            Q(friendship_requests_sent__to_user=request.user, friendship_requests_sent__status='accepted') |
+            Q(friendship_requests_received__from_user=request.user, friendship_requests_received__status='accepted')
+        ).exclude(id=request.user.id)
+    elif current_scope == 'group' and group_id:
+        group = get_object_or_404(Group, id=group_id)
+        # Check if user is in group
+        if not GroupMembership.objects.filter(user=request.user, group=group).exists():
+            # Redirect to global or error, but for now, use all
+            users = UserProfile.objects.none()
+        else:
+            users = UserProfile.objects.filter(member_groups__group=group)
+    else:
+        users = UserProfile.objects.all()
+
+    available_metrics = {
+        'steps': {'field': Sum('garmin_daily_steps__steps', filter=Q(garmin_daily_steps__date__gte=cutoff)), 'label': 'Steps', 'default': 0, 'output_field': IntegerField()},
+        'lifts': {'field': Value(0), 'label': 'Lifts', 'default': 0, 'output_field': IntegerField()},
+        'calories': {'field': Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__date__gte=cutoff)), 'label': 'Calories Burned', 'default': 0.0, 'output_field': FloatField()},
+        'coins': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='cardio_coins', transactions__created_at__date__gte=cutoff)), 'label': 'Coins', 'default': 0.0, 'output_field': DecimalField()},
+        'gems': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='gym_gems', transactions__created_at__date__gte=cutoff)), 'label': 'Gems', 'default': 0.0, 'output_field': DecimalField()},
+        'sleep': {'field': Value(0), 'label': 'Sleep', 'default': 0, 'output_field': IntegerField()},
+        'consumed': {'field': Value(0), 'label': 'Consumed', 'default': 0, 'output_field': IntegerField()},
+        'water': {'field': Value(0), 'label': 'Water', 'default': 0, 'output_field': IntegerField()},
+    }
+
+    if current_category not in available_metrics:
+        current_category = 'steps'
+
+    info = available_metrics[current_category]
+
+    # Annotate once
+    annotated_users = users.annotate(
+        metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
+    ).order_by('-metric_value')
+
+    # Top 5 for podium
+    users_query = annotated_users[:5]
+    users = [
+        {
+            'rank': i + 1,
+            'name': u.username,
+            'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
+            'avatar': u.avatar.url if u.avatar else None
+        }
+        for i, u in enumerate(users_query)
+    ]
+
+    # Top 10 for list
+    list_users_query = annotated_users[:10]
+    list_users = [
+        {
+            'rank': i + 1,
+            'name': u.username,
+            'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
+            'avatar': u.avatar.url if u.avatar else None
+        }
+        for i, u in enumerate(list_users_query)
+    ]
+    list_users = list_users[3:] if len(list_users) > 3 else []
+
+    # Pass user groups for group selection
+    user_groups = list(request.user.member_groups.values('id', 'name')) if current_scope == 'group' and not group_id else []
+
+    return render(request, 'social/leaderboard.html', {
+        'user': request.user,
+        'users': users,
+        'list_users': list_users,
+        'metric': info['label'],
+        'current_category': current_category,
+        'current_history': current_history,
+        'current_scope': current_scope,
+        'group_id': group_id,
+        'available_categories': list(available_metrics.keys()),
+        'user_groups': user_groups
+    })

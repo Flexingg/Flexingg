@@ -150,12 +150,81 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+# AWS Settings
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
+AWS_CUSTOM_DOMAIN = os.getenv('AWS_CUSTOM_DOMAIN')
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+AWS_QUERYSTRING_AUTH = False
+AWS_S3_FILE_OVERWRITE = True
+AWS_DEFAULT_ACL = 'public-read'
+AWS_S3_VERIFY = True
+AWS_S3_ADDRESSING_STYLE = "path" 
+AWS_S3_CORS_RULES = [
+    {
+        'AllowedOrigins': ['*'],
+        'AllowedMethods': ['GET'],
+        'AllowedHeaders': ['*'],
+        'MaxAgeSeconds': 3000,
+    },
+] if DEBUG else []
+
+# Static files configuration
+if DEBUG:
+    STATIC_URL = '/static/'
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+else:
+    STATIC_URL = f'https://{AWS_CUSTOM_DOMAIN}/static/'
+    STATICFILES_STORAGE = 'storages.backends.s3boto3.S3StaticStorage'
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 STATICFILES_DIRS = [
     BASE_DIR.parent / 'static',
 ]
 
+# Media files configuration - Force local for development to avoid S3 issues
+DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# S3 config for production (commented out for now)
+# if not DEBUG:
+#     MEDIA_URL = f'https://{AWS_CUSTOM_DOMAIN}/media/'
+#     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+# Storage configuration - Disabled for local development to use FileSystemStorage
+# STORAGES = {
+#     "default": {
+#         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+#         "OPTIONS": {
+#             'bucket_name': AWS_STORAGE_BUCKET_NAME,
+#             'default_acl': 'public-read',
+#             'endpoint_url': AWS_S3_ENDPOINT_URL,
+#             'signature_version': 's3v4',
+#             'location': 'media',
+#             'addressing_style': 'path',  # Added for R2
+#         },
+#     },
+#     "staticfiles": {
+#         "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+#         "OPTIONS": {
+#             'bucket_name': AWS_STORAGE_BUCKET_NAME,
+#             'default_acl': 'public-read',
+#             'endpoint_url': AWS_S3_ENDPOINT_URL,
+#             'signature_version': 's3v4',
+#             'location': 'static',
+#             'addressing_style': 'path',  # Added for R2
+#         },
+#     },
+# }
+
+# Favicon settings
+#FAVICON_PATH = os.path.join(STATIC_URL, 'app/icons/favicon.ico')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

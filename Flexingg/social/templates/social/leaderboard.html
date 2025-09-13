@@ -1,0 +1,336 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}FLEXIN.GG - Leaderboards{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+/* Custom Styles for Pixelated/Retro Look */
+body {
+    font-family: 'Press Start 2P', cursive;
+    background-color: #1a1a1a;
+    color: #ffffff;
+    text-shadow: 2px 2px #000;
+}
+
+/* Reusable pixelated box style */
+.pixel-box {
+    background-color: #2c2c2c;
+    border: 4px solid #4a4a4a;
+    box-shadow: inset 0 0 0 4px #1a1a1a;
+}
+
+/* Button style */
+.pixel-button {
+    background-color: #4a4a4a;
+    border: 4px solid #6b6b6b;
+    box-shadow: inset 0 0 0 4px #2c2c2c;
+    padding: 10px 15px;
+    text-align: center;
+    color: #fff;
+    transition: all 0.1s ease-in-out;
+    cursor: pointer;
+    image-rendering: pixelated;
+}
+
+.pixel-button:hover, .pixel-button.active {
+    background-color: #5a5a5a;
+    border-color: #7b7b7b;
+    box-shadow: inset 0 0 0 4px #3c3c3c;
+}
+
+.pixel-button:active {
+    transform: translateY(2px);
+}
+
+/* Gold styling for #1 rank */
+.rank-1 {
+    border-color: #ffd700;
+    box-shadow: inset 0 0 0 4px #a08600, 0 0 15px rgba(255, 215, 0, 0.5);
+    color: #ffd700;
+}
+
+.rank-1 .rank-number {
+    color: #ffd700;
+}
+
+/* Silver styling for #2 rank */
+.rank-2 {
+    border-color: #c0c0c0;
+    box-shadow: inset 0 0 0 4px #8d8d8d;
+}
+
+/* Bronze styling for #3 rank */
+.rank-3 {
+    border-color: #cd7f32;
+    box-shadow: inset 0 0 0 4px #855220;
+}
+
+/* Hide scrollbar but allow scrolling */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+.modal-backdrop {
+    background-color: rgba(0,0,0,0.7);
+}
+
+/* Component merged styles */
+.pixel-border-light {
+    border: 4px solid #666;
+    box-shadow: inset -4px -4px 0px 0px #444, inset 4px 4px 0px 0px #888;
+    image-rendering: pixelated;
+}
+
+/* Distinct styles for scope buttons */
+.scope-global {
+    border-color: #4a90e2 !important;
+    box-shadow: inset 0 0 0 4px #2c5aa0 !important;
+}
+.scope-global.active {
+    background-color: #5a9ae2;
+    border-color: #5aa0e2 !important;
+    box-shadow: inset 0 0 0 4px #3c6ba0 !important;
+}
+
+.scope-friends {
+    border-color: #7ed321 !important;
+    box-shadow: inset 0 0 0 4px #5a9e1a !important;
+}
+.scope-friends.active {
+    background-color: #8ee431;
+    border-color: #8ee431 !important;
+    box-shadow: inset 0 0 0 4px #6aa61a !important;
+}
+
+.scope-group {
+    border-color: #f5a623 !important;
+    box-shadow: inset 0 0 0 4px #c8851a !important;
+}
+.scope-group.active {
+    background-color: #f6b733;
+    border-color: #f6b733 !important;
+    box-shadow: inset 0 0 0 4px #d4a01a !important;
+}
+
+/* Modal animation for pop-up effect */
+.modal-backdrop:not(.hidden) {
+    animation: fadeIn 0.2s ease-in-out;
+}
+.modal-backdrop.hidden {
+    animation: fadeOut 0.2s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.9); }
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Group selection modal if needed */
+#group-modal .pixel-box {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Friends/Groups Links -->
+<nav class="flex justify-center items-center p-4 pixel-border-light">
+    <a href="{% url 'friends:friend_list' %}" class="text-lg text-blue-400 hover:text-blue-300 transition-colors font-pixel pr-6 border-r-2 border-blue-500">FRIENDS</a>
+    <a href="{% url 'groups:group_list' %}" class="text-lg text-green-400 hover:text-green-300 transition-colors font-pixel pl-6">GROUPS</a>
+</nav>
+
+<!-- Category Scroller -->
+<div class="relative p-4">
+    <div id="category-scroller" class="no-scrollbar flex overflow-x-auto space-x-4 snap-x snap-mandatory scroll-smooth pixel-border">
+        <a href="?category=steps{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'steps' %} active{% endif %}" title="Steps" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/shoes.png' %}" alt="Steps" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=lifts{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'lifts' %} active{% endif %}" title="Lifts" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/dumbbell.png' %}" alt="Lifts" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=calories{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'calories' %} active{% endif %}" title="Calories Burned" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/flame.png' %}" alt="Calories" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=coins{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'coins' %} active{% endif %}" title="Coins" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/coin.png' %}" alt="Coins" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=gems{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'gems' %} active{% endif %}" title="Gems" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/diamon.png' %}" alt="Gems" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=sleep{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'sleep' %} active{% endif %}" title="Sleep" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/bed.png' %}" alt="Sleep" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=consumed{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'consumed' %} active{% endif %}" title="Consumed" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/plate.png' %}" alt="Consumed" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+        <a href="?category=water{% if current_history != 'All Time' %}&history={{ current_history }}{% endif %}{% if current_scope != 'Global' %}&scope={{ current_scope }}{% endif %}"
+           class="category-btn pixel-button flex-shrink-0 snap-center{% if current_category == 'water' %} active{% endif %}" title="Water" style="text-decoration: none; display: inline-block;">
+            <img src="{% static 'icons/sparkling-drink.png' %}" alt="Water" class="w-8 h-8" style="image-rendering: pixelated;">
+        </a>
+    </div>
+</div>
+
+<!-- History and Scope Buttons -->
+<div class="grid grid-cols-2 gap-4 p-4">
+    <button id="history-button" class="pixel-button text-sm font-pixel">{{ current_history }}</button>
+    <button id="scope-button" class="pixel-button text-sm font-pixel">{{ current_scope }}</button>
+</div>
+
+<!-- Leaderboard (server-rendered like component) -->
+<section class="p-4">
+    <div class="space-y-4">
+        <h3 class="font-pixel text-lg text-center text-blue-400">LEADERBOARD</h3>
+        <div class="pixel-border bg-[#2a2a2a] mt-3 p-4">
+            <div class="flex items-end justify-center gap-2 text-center h-56 mt-16">
+                {% if users %}
+                    {% for user in users %}
+                        {% if user.rank == 2 %}
+                            <div class="w-1/3 flex flex-col items-center">
+                                <img src="{% if user.avatar %}{{ user.avatar }}{% else %}https://placehold.co/64x64/222/cccccc?text={{ user.name.0|upper }}{% endif %}" alt="{{ user.name }} avatar" class="w-16 h-16 pixel-border mb-2" style="image-rendering: pixelated;">
+                                <p class="font-pixel text-sm text-gray-300">{{ user.name }}</p>
+                                <p class="text-xs text-yellow-400">{{ user.metric_value|floatformat:0 }} {{ metric|title }}</p>
+                                <div class="h-24 mt-2 w-full bg-[#3a3a3a] pixel-border-light border-gray-400 flex items-center justify-center">
+                                    <p class="font-pixel text-4xl text-gray-300">2</p>
+                                </div>
+                            </div>
+                        {% elif user.rank == 1 %}
+                            <div class="w-1/3 flex flex-col items-center">
+                                <img src="{% if user.avatar %}{{ user.avatar }}{% else %}https://placehold.co/64x64/222/eeeeee?text={{ user.name.0|upper }}{% endif %}" alt="{{ user.name }} avatar" class="w-20 h-20 pixel-border mb-2" style="image-rendering: pixelated;">
+                                <p class="font-pixel text-base text-yellow-300">{{ user.name }}</p>
+                                <p class="text-sm text-yellow-300">{{ user.metric_value|floatformat:0 }} {{ metric|title }}</p>
+                                <div class="h-36 mt-2 w-full bg-[#4a4a4a] pixel-border-light border-yellow-400 flex items-center justify-center">
+                                    <p class="font-pixel text-5xl text-yellow-300">1</p>
+                                </div>
+                            </div>
+                        {% elif user.rank == 3 %}
+                            <div class="w-1/3 flex flex-col items-center">
+                                <img src="{% if user.avatar %}{{ user.avatar }}{% else %}https://placehold.co/64x64/222/bbbbbb?text={{ user.name.0|upper }}{% endif %}" alt="{{ user.name }} avatar" class="w-16 h-16 pixel-border mb-2" style="image-rendering: pixelated;">
+                                <p class="font-pixel text-sm text-amber-500">{{ user.name }}</p>
+                                <p class="text-xs text-yellow-400">{{ user.metric_value|floatformat:0 }} {{ metric|title }}</p>
+                                <div class="h-20 mt-2 w-full bg-[#2a2a2a] pixel-border-light border-amber-600 flex items-center justify-center">
+                                    <p class="font-pixel text-4xl text-amber-500">3</p>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <div class="w-full text-center p-8 font-pixel text-gray-400">No data available</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if list_users %}
+    <div class="mt-6">
+        <h4 class="font-pixel text-md text-center text-blue-400 mb-3">Rankings</h4>
+        <div class="pixel-border bg-[#2a2a2a] p-2 space-y-2">
+            {% for user in list_users %}
+            <div class="flex items-center justify-between bg-[#1c1c1c] p-2">
+                <span class="font-pixel text-sm text-gray-400 w-8">{{ user.rank }}</span>
+                <p class="font-pixel text-sm text-white ml-3 flex-grow">{{ user.name }}</p>
+                <p class="font-pixel text-sm text-yellow-400">{{ user.metric_value|floatformat:0 }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<!-- History Modal -->
+<div id="history-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+    <div class="pixel-box p-6 w-full max-w-sm space-y-4">
+        <h3 class="text-center text-xl text-blue-400 font-pixel">HISTORY</h3>
+        <button class="pixel-button w-full font-pixel{% if current_history == 'Weekly' %} active{% endif %}" data-value="Weekly">Weekly</button>
+        <button class="pixel-button w-full font-pixel{% if current_history == 'Monthly' %} active{% endif %}" data-value="Monthly">Monthly</button>
+        <button class="pixel-button w-full font-pixel{% if current_history == 'All Time' %} active{% endif %}" data-value="All Time">All Time</button>
+        <button class="pixel-button w-full bg-red-700 mt-4 font-pixel" data-action="close">Close</button>
+    </div>
+</div>
+
+<!-- Scope Modal -->
+<div id="scope-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+    <div class="pixel-box p-6 w-full max-w-sm space-y-4">
+        <h3 class="text-center text-xl text-blue-400 font-pixel">SCOPE</h3>
+        <button class="pixel-button w-full font-pixel{% if current_scope == 'Global' %} active{% endif %} scope-global" data-value="Global">Global</button>
+        <button class="pixel-button w-full font-pixel{% if current_scope == 'Friends' %} active{% endif %} scope-friends" data-value="Friends">Friends</button>
+        <button class="pixel-button w-full font-pixel{% if current_scope == 'Group' %} active{% endif %} scope-group" data-value="Group">Group</button>
+        <button class="pixel-button w-full bg-red-700 mt-4 font-pixel" data-action="close">Close</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const historyButton = document.getElementById('history-button');
+    const scopeButton = document.getElementById('scope-button');
+    const historyModal = document.getElementById('history-modal');
+    const scopeModal = document.getElementById('scope-modal');
+
+    if (!historyButton || !historyModal || !scopeButton || !scopeModal) {
+        console.error('Modal elements not found');
+        return;
+    }
+
+    const getQueryParams = () => {
+        const params = new URLSearchParams(window.location.search);
+        return {
+            category: params.get('category') || 'steps',
+            history: params.get('history') || 'All Time',
+            scope: params.get('scope') || 'Global'
+        };
+    };
+
+    const updateUrl = (type, value) => {
+        const params = getQueryParams();
+        params[type] = value;
+        const queryString = new URLSearchParams(params).toString();
+        window.location.search = queryString ? `?${queryString}` : '';
+    };
+
+    // Modal setup
+    const setupModal = (button, modal, type) => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            modal.classList.remove('hidden');
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('close-btn') || e.target.dataset.action === 'close' || e.target === modal) {
+                modal.classList.add('hidden');
+            } else if (e.target.tagName === 'BUTTON' && e.target.dataset.value) {
+                const value = e.target.dataset.value;
+                updateUrl(type, value);
+                modal.classList.add('hidden');
+            }
+        });
+    };
+
+    setupModal(historyButton, historyModal, 'history');
+    setupModal(scopeButton, scopeModal, 'scope');
+});
+</script>
+{% endblock %}

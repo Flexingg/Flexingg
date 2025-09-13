@@ -1,7 +1,8 @@
 <div class="pixel-border bg-[#2a2a2a] mt-3 p-4 space-y-4">
     <div class="flex items-center space-x-4">
-        <img src="{% if profile.avatar %}{{ profile.avatar }}{% else %}https://placehold.co/64x64/222/00f5d4?text=AV{% endif %}" alt="User Avatar" class="w-16 h-16 pixel-border object-cover" style="image-rendering: pixelated;">
-        <button class="pixel-button px-3 py-2 font-pixel text-xs text-gray-300">CHANGE AVATAR</button>
+        <img src="{% if profile.avatar %}{{ profile.avatar.url }}{% else %}https://ui-avatars.com/api/?name={{ profile.username.0|upper }}&size=64&background=00f5d4&color=222{% endif %}" alt="User Avatar" id="avatar-preview" class="w-16 h-16 pixel-border object-cover" style="image-rendering: pixelated;">
+        <input type="file" id="avatar-input" name="avatar" accept="image/*" capture="user" class="hidden">
+        <button type="button" onclick="document.getElementById('avatar-input').click();" class="pixel-button px-3 py-2 font-pixel text-xs text-gray-300">CHANGE AVATAR</button>
     </div>
     <div>
         <label class="font-pixel text-sm text-gray-400">USERNAME</label>
@@ -20,6 +21,18 @@
                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">in</span>
                 </div>
             </div>
+            <script>
+                document.getElementById('avatar-input').addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            document.getElementById('avatar-preview').src = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            </script>
         </div>
         <div>
             <label class="font-pixel text-sm text-gray-400">WEIGHT</label>

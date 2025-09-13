@@ -1,42 +1,68 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+    /* Custom styles to blend pixel art with Material 3 */
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #121212; /* Material 3 dark background */
+        color: #E0E0E0;
+    }
+    .font-pixel {
+        font-family: 'Press Start 2P', cursive;
+    }
+    .pixel-border {
+        border: 4px solid #444;
+        box-shadow:
+            inset -4px -4px 0px 0px #222,
+            inset 4px 4px 0px 0px #555;
+        image-rendering: pixelated;
+    }
+    .pixel-button {
+        border: 4px solid #333;
+        background-color: #2a2a2a;
+        box-shadow:
+            inset -4px -4px 0px 0px #1a1a1a,
+            4px 4px 0px 0px #000;
+        transition: all 0.1s ease-in-out;
+        color: #00ff00;
+    }
+    .pixel-button:active {
+        transform: translate(4px, 4px);
+        box-shadow: inset -2px -2px 0px 0px #1a1a1a;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="min-h-screen bg-theme-surface flex items-center justify-center px-4">
-    <div class="max-w-md w-full text-center">
-        <div class="mb-8">
-            <i class="fas fa-wifi-slash text-6xl text-theme-primary"></i>
-        </div>
-        
-        <h1 class="text-3xl font-bold text-theme-on-surface mb-4">
-            You're Offline
-        </h1>
-        
-        <p class="text-theme-on-surface-variant mb-8">
-            It looks like you've lost your internet connection. Some features may be unavailable until you're back online.
+<!-- Header -->
+<header class="p-4 flex justify-between items-center bg-[#2a2a2a] border-b-4 border-black flex-shrink-0">
+    <h1 class="font-pixel text-2xl text-white tracking-wider">OFFLINE</h1>
+</header>
+
+<!-- Scrollable Main Content -->
+<main class="flex-grow p-4 md:p-6 flex flex-col items-center justify-center text-center bg-gray-900">
+    
+    <div class="pixel-border bg-[#2a2a2a] p-8 max-w-md w-full">
+        <svg class="w-24 h-24 text-red-500 mx-auto" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering: pixelated;">
+            <path d="M2 30L30 2M21 15L23 13M17 19L18 18M11 25L13 23" stroke="currentColor" stroke-width="4" stroke-linecap="square"/>
+            <path d="M4 20C4 20 8 16 16 16C24 16 28 20 28 20" stroke="currentColor" stroke-width="4" stroke-linecap="square" stroke-linejoin="round"/>
+            <path d="M8 12C8 12 12 8 16 8C20 8 24 12 24 12" stroke="currentColor" stroke-width="4" stroke-linecap="square" stroke-linejoin="round"/>
+        </svg>
+
+        <h2 class="font-pixel text-2xl text-red-400 mt-6">CONNECTION LOST</h2>
+        <p class="mt-2 text-gray-300">
+            You appear to be offline. Please check your internet connection.
         </p>
-
-        <div class="space-y-4">
-            <button 
-                onclick="window.location.reload()" 
-                class="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-theme-on-primary bg-theme-primary hover:bg-theme-primary-variant focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
-            >
-                <i class="fas fa-sync-alt mr-2"></i>
-                Try Again
-            </button>
-
-            <a 
-                href="/"
-                class="w-full inline-flex justify-center items-center px-6 py-3 border border-theme-outline rounded-md shadow-sm text-base font-medium text-theme-on-surface bg-theme-surface hover:bg-theme-surface-variant focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
-            >
-                <i class="fas fa-home mr-2"></i>
-                Go to Homepage
-            </a>
-        </div>
-
-        <div class="mt-8 text-sm text-theme-on-surface-variant">
-            <p>Don't worry! Any changes you make while offline will be saved and synced when you're back online.</p>
-        </div>
+        <button class="pixel-button mt-8 w-full md:w-auto px-8 py-3 font-pixel text-sm" onclick="location.reload();">
+            RETRY
+        </button>
+        <a href="/" class="block mt-4 text-green-400 font-pixel text-sm underline">Go to Homepage</a>
     </div>
-</div>
-{% endblock content %} 
+
+</main>
+{% endblock content %}

@@ -103,18 +103,29 @@
 </div>
 
 <script>
-function changePeriod(period) {
-    window.location.href = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope={{ scope }}&group_id={{ group_id }}';
-}
+const currentMetric = '{{ metric }}';
+const currentPeriod = '{{ period }}';
+const currentScope = '{{ scope }}';
+const currentGroupId = '{{ group_id|default:"" }}';
 
-function changeScope(scope) {
-    let url = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope=' + scope;
-    if ('{{ group_id }}') url += '&group_id={{ group_id }}';
+function changePeriod(newPeriod) {
+    let url = `/leaderboards/${currentMetric}/${newPeriod}/?scope=${currentScope}`;
+    if (currentGroupId) {
+        url += `&group_id=${currentGroupId}`;
+    }
     window.location.href = url;
 }
 
-function changeGroup(groupId) {
-    let url = "{% url 'fitness:leaderboards' metric=metric period=period %}" + '?scope=group&group_id=' + groupId;
+function changeScope(newScope) {
+    let url = `/leaderboards/${currentMetric}/${currentPeriod}/?scope=${newScope}`;
+    if (currentGroupId && newScope === 'group') {
+        url += `&group_id=${currentGroupId}`;
+    }
+    window.location.href = url;
+}
+
+function changeGroup(newGroupId) {
+    let url = `/leaderboards/${currentMetric}/${currentPeriod}/?scope=group&group_id=${newGroupId}`;
     window.location.href = url;
 }
 </script>

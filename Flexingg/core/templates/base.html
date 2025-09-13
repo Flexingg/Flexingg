@@ -35,7 +35,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
     <!-- PWA Meta Tags -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="{% static 'app/manifest.json' %}">
     <link rel="apple-touch-icon" href="{% static 'app/icons/icon.png' %}">
 
     <!-- PWA Icons -->
@@ -380,9 +380,6 @@ input[type="password"].pixel-input:focus {
 
     <!-- Service Worker and PWA Installation -->
     <script>
-        // Debug PWA state
-        console.log('[PWA] Starting initialization');
-        
         // PWA Installation
         window.deferredPrompt = null;
 
@@ -397,7 +394,7 @@ input[type="password"].pixel-input:focus {
         // Initialize PWA
         if ('serviceWorker' in navigator) {
             console.log('[PWA] Service Worker is supported');
-            navigator.serviceWorker.register('/sw.js', { 
+            navigator.serviceWorker.register('/static/app/sw.js', {
                 scope: '/',
                 updateViaCache: 'none'
             })

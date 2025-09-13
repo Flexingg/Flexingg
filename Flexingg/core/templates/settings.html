@@ -11,7 +11,7 @@
     <!-- Profile Settings -->
     <section>
         <h3 class="font-pixel text-lg text-[#00f5d4]">PROFILE</h3>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
 
             {% component "profile_section" profile=profile form=form %}{% endcomponent %}

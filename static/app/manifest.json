@@ -1,24 +1,24 @@
 {
-  "name": "Flexin.gg - Gamify Fitness Competitions",
+  "name": "Flexin.gg - Gamify Fitness",
   "short_name": "Flexin.gg",
   "id": "flexingg-pwa",
-  "description": "Gamify your fitness journey with competitions and rewards.",
+  "description": "Gamify your fitness journey with friends.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#000000",
-  "categories": ["lifestyle", "faith", "productivity"],
+  "categories": ["lifestyle", "fitness", "health", "games"],
   "icons": [
     {
-      "src": "/static/app/icons/icon.png",
+      "src": "/static/app/icons/android/android-launchericon-512-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/app/icons/icon.png",
+      "src": "/static/app/icons/android/android-launchericon-512-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -26,13 +26,13 @@
   ],
   "shortcuts": [
     {
-      "name": "Scripture Reading",
-      "short_name": "Scripture",
-      "description": "Open your daily Bible reading",
-      "url": "/?source=shortcut&page=faith/reading",
+      "name": "Gym",
+      "short_name": "Gym",
+      "description": "Game on!",
+      "url": "/gym",
       "icons": [
         {
-          "src": "/static/app/icons/shortcuts/read_icon.png",
+          "src": "/static/app/icons/flexingg_weightlifting.png",
           "sizes": "96x96",
           "type": "image/png",
           "purpose": "any"
@@ -40,27 +40,18 @@
       ]
     },
     {
-      "name": "Prayer Journal",
-      "short_name": "Prayer",
-      "description": "Open your prayer journal",
-      "url": "/?source=shortcut&page=faith/prayer",
+      "name": "Leaderboards",
+      "short_name": "Leaderboards",
+      "description": "See who's on top!",
+      "url": "/leaderboard",
       "icons": [
         {
-          "src": "/static/app/icons/shortcuts/prayer_icon.png",
+          "src": "/static/app/icons/flexingg_trophy.png",
           "sizes": "96x96",
           "type": "image/png",
           "purpose": "any"
         }
       ]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/static/screenshots/home.png",
-      "sizes": "987x1907",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Home Screen of Flexin.gg"
     }
   ],
   "prefer_related_applications": false,

@@ -124,7 +124,7 @@
 
                 <!-- Daily Quest / Stats -->
                 <section class="space-y-4 bg-[#2a2a2a)">
-                    {% component "stat_card" todays_total_calories=todays_total_calories todays_steps=todays_steps todays_lifting_calories=0 %}{% endcomponent %}
+                    {% component "stat_card" todays_total_calories=todays_total_calories todays_steps=todays_steps todays_consumed_calories=0 %}{% endcomponent %}
                 </section>
 
                 <!-- Competitions -->
@@ -136,6 +136,7 @@
 
             
                 <!-- Existing Chart Components with pixel styling -->
+                 <!--
                 <section class="pixel-border bg-[#2a2a2a] p-4">
                     {% component "calories_chart_card" %}{% endcomponent %}
                 </section>
@@ -145,6 +146,7 @@
                 <section class="pixel-border bg-[#2a2a2a] p-4">
                     {% component "sweat_score_chart_card" %}{% endcomponent %}
                 </section>
+                -->
 
                 <!-- Today's Activities Section (if exists) -->
                 {% if today_activities %}

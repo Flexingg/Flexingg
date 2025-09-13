@@ -9,6 +9,7 @@ import garth
 from garth.exc import GarthException, GarthHTTPError
 import logging
 
+from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 @shared_task

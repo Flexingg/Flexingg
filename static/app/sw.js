@@ -13,6 +13,7 @@ function log(...args) {
 // Assets that need to be available offline
 const ASSETS_TO_CACHE = [
     '/',
+    '/offline.html',
     '/?source=pwa',
     '/manifest.json',
     '/static/manifest.json',
@@ -78,11 +79,23 @@ self.addEventListener('fetch', event => {
     // Handle navigation requests
     if (event.request.mode === 'navigate') {
         event.respondWith(
-            fetch(event.request)
-                .catch(() => {
-                    log('Navigation fetch failed, falling back to cache');
-                    return caches.match('/');
-                })
+            (async () => {
+                try {
+                    const response = await fetch(event.request);
+                    if (response && response.status === 200) {
+                        const responseToCache = response.clone();
+                        const cache = await caches.open(CACHE_NAME);
+                        await cache.put(event.request, responseToCache);
+                        log('Cached navigation page:', event.request.url);
+                    }
+                    return response;
+                } catch (error) {
+                    log('Navigation fetch failed, serving offline page');
+                    const cache = await caches.open(CACHE_NAME);
+                    const cachedResponse = await cache.match('/offline.html');
+                    return cachedResponse || await caches.match('/');
+                }
+            })()
         );
         return;
     }
@@ -122,6 +135,16 @@ self.addEventListener('fetch', event => {
     // Default fetch behavior
     event.respondWith(
         fetch(event.request)
+            .then(response => {
+                if (response && response.status === 200) {
+                    const responseToCache = response.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(event.request, responseToCache);
+                        log('Cached dynamic resource:', event.request.url);
+                    });
+                }
+                return response;
+            })
             .catch(() => {
                 return caches.match(event.request);
             })

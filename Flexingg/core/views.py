@@ -179,10 +179,16 @@ class SettingsView(View):
     def post(self, request):
         if not request.user.is_authenticated:
             return redirect('fitness:sign_in')
-        form = self.form_class(request.POST, instance=request.user)
+        form = self.form_class(request.POST, request.FILES, instance=request.user)
         if form.is_valid():
+            avatar_file = request.FILES.get('avatar')
+            if avatar_file:
+                form.instance.avatar = avatar_file
             form.save()
+            messages.success(request, 'Profile updated successfully!')
             return redirect('fitness:settings')
+        else:
+            messages.error(request, 'Please correct the errors below.')
         context = {'form': form, 'profile': request.user}
         return render(request, self.template_name, context)
 

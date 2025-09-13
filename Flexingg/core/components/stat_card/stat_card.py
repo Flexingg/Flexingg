@@ -8,5 +8,5 @@ class StatCard(component.Component):
         context = super().get_context_data(**kwargs) or {}
         context['todays_total_calories'] = kwargs.get('todays_total_calories', 0)
         context['todays_steps'] = kwargs.get('todays_steps', 0)
-        context['todays_lifting_calories'] = kwargs.get('todays_lifting_calories', 0)
+        context['todays_consumed_calories'] = kwargs.get('todays_consumed_calories', 0)
         return context

@@ -33,7 +33,7 @@ class LoginForm(AuthenticationForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['username', 'email', 'height_ft', 'height_in', 'weight', 'sex', 'sync_debounce_minutes']
+        fields = ['username', 'avatar', 'email', 'height_ft', 'height_in', 'weight', 'sex', 'sync_debounce_minutes']
         widgets = {
             'username': forms.TextInput(attrs={
                 'class': 'pixel-input',
@@ -70,6 +70,12 @@ class ProfileForm(forms.ModelForm):
                 'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;',
                 'min': '1',
                 'max': '1440'
+            }),
+            'avatar': forms.FileInput(attrs={
+                'class': 'pixel-file',
+                'accept': 'image/*',
+                'capture': 'user',
+                'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
             })
         }
 

@@ -19,6 +19,7 @@ services:
              gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application"
     volumes:
       - .:/app
+      - ./media:/app/Flexingg/media
     ports:
       - "1234:8000"
     environment:
@@ -27,6 +28,7 @@ services:
       - DB_PASSWORD=flexingg_pass
       - DB_HOST=db
       - DB_PORT=5432
+      - DEBUG=True
     depends_on:
       - db
 
