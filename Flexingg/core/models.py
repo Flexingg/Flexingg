@@ -26,6 +26,7 @@ class UserProfile(AbstractUser):
         null=True, blank=True, help_text='Gender'
     )
     sync_debounce_minutes = models.IntegerField(default=60, null=True, blank=True, help_text="Minutes between automatic Garmin syncs (default: 60)")
+    liftosaur_user_id = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur user ID for integration")
 
     groups = models.ManyToManyField(
         'auth.Group',

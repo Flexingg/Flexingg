@@ -11,6 +11,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.views import View
 from .models import SweatScoreWeights, UserProfile, Friendship
+from django.contrib import messages
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
 from .models import *  # JWT, Notification, Relationship
 from django.contrib.staticfiles.finders import find
@@ -166,6 +167,34 @@ class SettingsView(View):
             messages.error(request, 'Please correct the errors below.')
         context = {'form': form, 'profile': request.user}
         return render(request, self.template_name, context)
+
+
+class LiftosaurConnectView(View):
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return redirect('fitness:sign_in')
+        liftosaur_user_id = request.POST.get('liftosaur_user_id')
+        if liftosaur_user_id:
+            # Strip the prefix if present
+            prefix = "https://www.liftosaur.com/profile/"
+            if liftosaur_user_id.startswith(prefix):
+                liftosaur_user_id = liftosaur_user_id[len(prefix):]
+            request.user.liftosaur_user_id = liftosaur_user_id.strip()
+            request.user.save()
+            messages.success(request, 'Liftosaur connected successfully!')
+        else:
+            messages.error(request, 'Please enter your Liftosaur User ID.')
+        return redirect('fitness:settings')
+
+
+class LiftosaurDisconnectView(View):
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return redirect('fitness:sign_in')
+        request.user.liftosaur_user_id = None
+        request.user.save()
+        messages.success(request, 'Liftosaur disconnected.')
+        return redirect('fitness:settings')
 
 
 class ComingSoonView(TemplateView):

@@ -24,7 +24,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('core.urls')),
     path('social/', include('social.urls')),
-    path('', include('garminconnect.urls')),
+    path('garmin/', include('garminconnect.urls')),
+    path('liftosaur/', include('liftosaur.urls')),
     path('pwa/', include('pwa.urls')),
 ]
 

@@ -10,7 +10,9 @@ class IntegrationsSection(component.Component):
         profile = kwargs.get('profile')
         if profile:
             garmin_connected = Garmin_Auth.objects.filter(user=profile).exists()
+            liftosaur_connected = bool(profile.liftosaur_user_id)
             context['garmin_connected'] = garmin_connected
+            context['liftosaur_connected'] = liftosaur_connected
         return context
 
     class Media:

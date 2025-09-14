@@ -20,7 +20,20 @@
 
     <div class="flex items-center justify-between">
         <span class="font-pixel text-sm text-white">Liftosaur</span>
-        <button class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+        {% if liftosaur_connected %}
+        <div class="flex space-x-2">
+            <form id="liftosaur-sync-form" method="post" action="/liftosaur/sync/" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">SYNC</button>
+            </form>
+            <form method="post" action="{% url 'fitness:disconnect_liftosaur' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+        </div>
+        {% else %}
+        <button id="liftosaur-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+        {% endif %}
     </div>
     <div class="flex items-center justify-between">
         <span class="font-pixel text-sm text-white">Health Connect</span>
@@ -56,3 +69,98 @@
     </div>
 </div>
 {% endif %}
+
+<!-- Liftosaur Modal only shown if not connected -->
+{% if not liftosaur_connected %}
+<div id="liftosaur-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Connect Liftosaur</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your Liftosaur User ID to connect.</p>
+        <form method="post" action="{% url 'fitness:connect_liftosaur' %}" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Liftosaur User ID</label>
+                <input type="text" name="liftosaur_user_id" required class="pixel-input w-full" placeholder="Your Liftosaur User ID"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="toggleLiftosaurModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Inline DOM loaded for integrations');
+    const liftosaurConnectBtn = document.getElementById('liftosaur-connect-btn');
+    console.log('Inline Liftosaur connect button:', liftosaurConnectBtn);
+    if (liftosaurConnectBtn) {
+        liftosaurConnectBtn.addEventListener('click', function() {
+            console.log('Inline Liftosaur connect button clicked');
+            toggleLiftosaurModal();
+        });
+    } else {
+        console.log('Inline Liftosaur connect button not found');
+    }
+
+    // Handle Liftosaur sync with AJAX to avoid page refresh
+    const syncForm = document.getElementById('liftosaur-sync-form');
+    if (syncForm) {
+        syncForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('Liftosaur sync form submitted via AJAX');
+            const formData = new FormData(syncForm);
+            fetch('/liftosaur/sync/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Sync response:', data);
+                if (data.status === 'success') {
+                    alert('Sync successful! Stats: ' + JSON.stringify(data.stats));
+                } else {
+                    alert('Sync failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Sync error:', error);
+                alert('Sync error occurred.');
+            });
+        });
+    } else {
+        console.log('Liftosaur sync form not found');
+    }
+
+    // Modal toggle function for Liftosaur
+    window.toggleLiftosaurModal = function() {
+        console.log('toggleLiftosaurModal called inline');
+        const modal = document.getElementById('liftosaur-modal');
+        console.log('Inline Liftosaur modal element:', modal);
+        if (modal) {
+            modal.classList.toggle('hidden');
+            console.log('Inline Liftosaur hidden class toggled');
+        } else {
+            console.log('Inline Liftosaur modal not found');
+        }
+    };
+
+    // Close modal when clicking outside
+    const liftosaurModal = document.getElementById('liftosaur-modal');
+    if (liftosaurModal) {
+        liftosaurModal.addEventListener('click', function(e) {
+            if (e.target === liftosaurModal) {
+                liftosaurModal.classList.add('hidden');
+                console.log('Inline Liftosaur modal closed by outside click');
+            }
+        });
+    } else {
+        console.log('Inline Liftosaur modal not found on DOM load');
+    }
+});
+</script>

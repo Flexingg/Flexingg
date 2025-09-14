@@ -1,39 +1,75 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
-    const connectBtn = document.getElementById('garmin-connect-btn');
-    console.log('Connect button:', connectBtn);
-    if (connectBtn) {
-        connectBtn.addEventListener('click', function() {
-            console.log('Connect button clicked');
+    const garminConnectBtn = document.getElementById('garmin-connect-btn');
+    console.log('Garmin connect button:', garminConnectBtn);
+    if (garminConnectBtn) {
+        garminConnectBtn.addEventListener('click', function() {
+            console.log('Garmin connect button clicked');
             toggleGarminModal();
         });
     } else {
-        console.log('Connect button not found');
+        console.log('Garmin connect button not found');
     }
 
-    // Modal toggle function
+    const liftosaurConnectBtn = document.getElementById('liftosaur-connect-btn');
+    console.log('Liftosaur connect button:', liftosaurConnectBtn);
+    if (liftosaurConnectBtn) {
+        liftosaurConnectBtn.addEventListener('click', function() {
+            console.log('Liftosaur connect button clicked');
+            toggleLiftosaurModal();
+        });
+    } else {
+        console.log('Liftosaur connect button not found');
+    }
+
+    // Modal toggle function for Garmin
     window.toggleGarminModal = function() {
         console.log('toggleGarminModal called');
         const modal = document.getElementById('garmin-modal');
-        console.log('Modal element:', modal);
+        console.log('Garmin modal element:', modal);
         if (modal) {
             modal.classList.toggle('hidden');
-            console.log('Hidden class toggled');
+            console.log('Garmin hidden class toggled');
         } else {
-            console.log('Modal not found');
+            console.log('Garmin modal not found');
         }
     };
 
-    // Close modal when clicking outside
-    const modal = document.getElementById('garmin-modal');
-    if (modal) {
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                modal.classList.add('hidden');
-                console.log('Modal closed by outside click');
+    // Modal toggle function for Liftosaur
+    window.toggleLiftosaurModal = function() {
+        console.log('toggleLiftosaurModal called');
+        const modal = document.getElementById('liftosaur-modal');
+        console.log('Liftosaur modal element:', modal);
+        if (modal) {
+            modal.classList.toggle('hidden');
+            console.log('Liftosaur hidden class toggled');
+        } else {
+            console.log('Liftosaur modal not found');
+        }
+    };
+
+    // Close modals when clicking outside
+    const garminModal = document.getElementById('garmin-modal');
+    if (garminModal) {
+        garminModal.addEventListener('click', function(e) {
+            if (e.target === garminModal) {
+                garminModal.classList.add('hidden');
+                console.log('Garmin modal closed by outside click');
             }
         });
     } else {
-        console.log('Modal not found on DOM load');
+        console.log('Garmin modal not found on DOM load');
+    }
+
+    const liftosaurModal = document.getElementById('liftosaur-modal');
+    if (liftosaurModal) {
+        liftosaurModal.addEventListener('click', function(e) {
+            if (e.target === liftosaurModal) {
+                liftosaurModal.classList.add('hidden');
+                console.log('Liftosaur modal closed by outside click');
+            }
+        });
+    } else {
+        console.log('Liftosaur modal not found on DOM load');
     }
 });

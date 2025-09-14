@@ -3,14 +3,10 @@ from django.apps import apps
 from django.contrib.admin.sites import AlreadyRegistered, AdminSite
 
 
-# class CustomModelAdmin(admin.ModelAdmin): #For use with non unfold admin
-#     def __init__(self, model, admin_site):
-#         self.list_display = [field.name for field in model._meta.concrete_fields]
-#         super(CustomModelAdmin, self).__init__(model, admin_site)
 
 # Register your models here.
 app_models = []
-apps_to_register = ['core']
+apps_to_register = ['liftosaur']
 
 for app_name in apps_to_register:
     try:
@@ -21,6 +17,6 @@ for app_name in apps_to_register:
 
 for model in app_models:
     try:
-        admin.site.register(model, admin.ModelAdmin)
+        admin.site.register(model)
     except AlreadyRegistered:
         pass

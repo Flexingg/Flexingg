@@ -24,7 +24,7 @@ class Garmin_Auth(models.Model):
     last_sync = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the last successful data sync.")    # Formats automatically. Essential to monitor sync frequency!
     last_sync_attempt = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the last sync attempt (successful or failed).") # Initial sync flow + error handling
     garmin_email = models.EmailField(blank=True, null=True, help_text="Garmin Connect email address used for linking.")
-
+    liftosaur_user_id = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur user ID for syncing workout data.")
 
     def expired(self):        
         if self.expires_at is None:    

@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "core.apps.CoreConfig",
     "garminconnect.apps.GarminconnectConfig",
     "social.apps.SocialConfig",
+    "liftosaur.apps.LiftosaurConfig",
     "django.contrib.admin",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
