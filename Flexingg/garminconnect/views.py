@@ -12,68 +12,11 @@ from .forms import GarminConnectForm
 import garth
 from garth.sso import exchange
 from garth.exc import GarthException, GarthHTTPError
+from .tasks import garmin_sync_steps_task, garmin_sync_activities_task
+from .utils import ensure_valid_tokens
 import logging
 
 logger = logging.getLogger(__name__)
-
-def ensure_valid_tokens(garmin_auth):
-    """
-    Ensure Garmin tokens are valid by refreshing if expired.
-    Returns True if successful, False otherwise.
-    """
-    if not garmin_auth.expired():
-        return True
-
-    logger.info(f"Tokens expired for user {garmin_auth.user.id}, refreshing...")
-    try:
-        oauth1_data = {
-            'oauth_token': garmin_auth.oauth_token,
-            'oauth_token_secret': garmin_auth.oauth_token_secret,
-            'mfa_token': getattr(garmin_auth, 'mfa_token', None),
-            'mfa_expiration_timestamp': getattr(garmin_auth, 'mfa_expiration_timestamp', None),
-            'domain': getattr(garmin_auth, 'domain', None),
-        }
-        oauth2_data = {
-            'scope': garmin_auth.scope,
-            'jti': garmin_auth.jti,
-            'token_type': garmin_auth.token_type,
-            'access_token': garmin_auth.access_token,
-            'refresh_token': garmin_auth.refresh_token,
-            'expires_in': garmin_auth.expires_in,
-            'expires_at': garmin_auth.expires_at,
-            'refresh_token_expires_in': getattr(garmin_auth, 'refresh_token_expires_in', None),
-            'refresh_token_expires_at': getattr(garmin_auth, 'refresh_token_expires_at', None),
-        }
-
-        # Create token objects
-        oauth1_token = garth.auth_tokens.OAuth1Token(**oauth1_data)
-        oauth2_token = garth.auth_tokens.OAuth2Token(**oauth2_data)
-
-        # Refresh
-        oauth1_token.refresh()
-        oauth2_token.refresh()
-
-        # Update stored tokens
-        garmin_auth.oauth_token = oauth1_token.oauth_token
-        garmin_auth.oauth_token_secret = oauth1_token.oauth_token_secret
-        garmin_auth.mfa_token = getattr(oauth1_token, 'mfa_token', None)
-        garmin_auth.mfa_expiration_timestamp = getattr(oauth1_token, 'mfa_expiration_timestamp', None)
-        garmin_auth.domain = getattr(oauth1_token, 'domain', None)
-        garmin_auth.scope = oauth2_token.scope
-        garmin_auth.jti = oauth2_token.jti
-        garmin_auth.token_type = oauth2_token.token_type
-        garmin_auth.access_token = oauth2_token.access_token
-        garmin_auth.refresh_token = oauth2_token.refresh_token
-        garmin_auth.expires_in = oauth2_token.expires_in
-        garmin_auth.expires_at = oauth2_token.expires_at
-        garmin_auth.refresh_token_expires_in = getattr(oauth2_token, 'refresh_token_expires_in', None)
-        garmin_auth.refresh_token_expires_at = getattr(oauth2_token, 'refresh_token_expires_at', None)
-        garmin_auth.save()
-        logger.info("Token refresh successful")
-        return True
-    except Exception as refresh_err:
-        logger.error(f"Token refresh failed for user {garmin_auth.user.id}: {refresh_err}")
-        return False
 
 def perform_garmin_sync_steps(user, start_date, end_date):
     """
@@ -116,10 +59,11 @@ def perform_garmin_sync_steps(user, start_date, end_date):
         garth.client.configure(oauth1_token=oauth1_token, oauth2_token=oauth2_token)
 
         # Sync steps for each day in range
+        local_today = timezone.localtime().date()
         current_date = start_date
         while current_date <= end_date:
             try:
-                if current_date > timezone.now().date():
+                if current_date > local_today:
                     current_date += timedelta(days=1)
                     continue
 
@@ -479,28 +423,16 @@ class BackgroundGarminSyncView(LoginRequiredMixin, View):
         start_date = end_date.replace(day=1)
         activity_limit = 500
 
-        # Sync steps
+        # Sync steps synchronously since it's fast
         steps_result = perform_garmin_sync_steps(request.user, start_date, end_date)
         steps_synced = steps_result.get('steps_synced', 0) if steps_result.get('success') else 0
 
-        # Sync activities
-        activities_result = perform_garmin_sync_activities(request.user, activity_limit)
-        activities_synced = activities_result.get('activities_synced', 0) if activities_result.get('success') else 0
+        # Trigger activities async
+        garmin_sync_activities_task.delay(request.user.id, activity_limit)
 
-        if steps_result.get('success') and activities_result.get('success'):
-            return JsonResponse({
-                'success': True,
-                'steps_synced': steps_synced,
-                'activities_synced': activities_synced,
-                'message': f'Synced {steps_synced} steps and {activities_synced} activities'
-            })
-        else:
-            error_msg = []
-            if not steps_result.get('success'):
-                error_msg.append(steps_result.get('error', 'Steps sync failed'))
-            if not activities_result.get('success'):
-                error_msg.append(activities_result.get('error', 'Activities sync failed'))
-            return JsonResponse({
-                'success': False,
-                'error': '; '.join(error_msg)
-            }, status=500)
+        return JsonResponse({
+            'success': True,
+            'steps_synced': steps_synced,
+            'tasks_started': True,
+            'message': f'Steps synced ({steps_synced} records from {start_date} to {end_date}), activities task started ({activity_limit} limit)'
+        })

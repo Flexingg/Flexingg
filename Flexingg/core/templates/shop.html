@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Shop - Flexin.gg{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Custom styles to blend pixel art with Material 3 theme */
+    :root {
+
+        --theme-surface: #121212;
+        --theme-surface-variant: #2a2a2a;
+        --theme-on-surface: #E0E0E0;
+        --theme-on-surface-variant: #B0B0B0;
+        --theme-primary: #00f5d4;
+        --theme-on-primary: #000000;
+        --theme-secondary: #00bbf9;
+        --theme-on-secondary: #000000;
+        --theme-tertiary: #ff6b6b; 
+        --theme-on-tertiary: #000000;
+        --theme-outline: #444;
+        --theme-error: #ff4757;
+    }
+
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #121212 !important;
+        color: #E0E0E0;
+    }
+
+    .font-pixel {
+        font-family: 'Press Start 2P', cursive;
+    }
+    .pixel-border {
+        border: 4px solid #444;
+        box-shadow: 
+            inset -4px -4px 0px 0px #222,
+            inset 4px 4px 0px 0px #555;
+        image-rendering: pixelated;
+    }
+    .pixel-border-light {
+        border: 4px solid #666;
+        box-shadow: 
+            inset -4px -4px 0px 0px #444,
+            inset 4px 4px 0px 0px #888;
+        image-rendering: pixelated;
+    }    
+    .pixel-button {
+        border: 4px solid #333;
+        background-color: #2a2a2a;
+        box-shadow: 
+            inset -4px -4px 0px 0px #1a1a1a,
+            4px 4px 0px 0px #000000;
+        transition: all 0.1s ease-in-out;
+    }
+    .pixel-button:active {
+        transform: translate(4px, 4px); 
+        box-shadow: inset -2px -2px 0px 0px #1a1a1a;        
+    } 
+    html {
+        background-color: #121212 !important;
+    }
+    /* Custom progress bar with pixelated look */
+    progress{
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 20px;
+        border: 2px solid #444;
+    }
+
+    progress::-webkit-progress-bar {
+        background-color: #222;
+    }
+
+    progress::-webkit-progress-value {
+
+        background-image: linear-gradient(
+                               transparent 33%, rgba(0,0,0,.1) 33%, 
+                               rgba(0,0,0,.1) 66%, transparent 66%),
+                           linear-gradient(top, 
+                               rgba(255, 255, 255, .25),
+                               rgba(0, 0, 0, .25) ),
+                           linear-gradient(left, #00f5d4, #00bbf9);
+
+        background-size: 35px 20px, 100% 100%, 100% 100%; 
+    }    
+
+    .rarity-common { border-color: #888; color: #aaa; }
+    .rarity-uncommon { border-color: #36a832; color: #50e84b; }
+    .rarity-rare { border-color: #3275a8; color: #4db1ff; }
+    .rarity-epic { border-color: #8332a8; color: #d05bff; }
+    .rarity-legendary { border-color: #a88b32; color: #ffc42b; }
+    .item-selectable { transition: transform 0.1s ease-out; }
+    .item-selectable:hover { transform: scale(1.02); }
+</style>
+{% endblock %}
+
+{% block top_bar_content %}
+<div class="p-4 flex-shrink-0">
+    <h3 class="font-pixel text-2xl text-center text-[#f7b801] pt-2">SHOP</h3>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- App Container -->
+<div class="w-full min-h-screen bg-[#1c1c1c] md:max-w-7xl md:mx-auto md:my-8 md:h-auto md:min-h-[850px] md:rounded-2xl md:shadow-2xl flex flex-col" style="background-color: #121212;">
+
+    <!-- Main Content Area -->
+    <div class="flex flex-col w-full min-h-screen">
+
+        <!-- Scrollable Main Content -->
+        <main class="flex-1 p-4 overflow-y-auto space-y-4">
+
+            <div class="text-center py-2">
+                <a href="/locker_room/" class="pixel-button font-pixel text-lg text-gray-300 px-8 py-3 inline-block">
+                    LOCKER ROOM
+                </a>
+            </div>
+
+            <!-- Currency Balances -->
+            <div class="pixel-border bg-[#2a2a2a] p-3 flex justify-around text-center">
+                <div>
+                    <p class="font-pixel text-yellow-400">CardioCoins</p>
+                    <p class="font-pixel text-lg mt-1">1,250</p>
+                </div>
+                <div>
+                    <p class="font-pixel text-cyan-400">GymGems</p>
+                    <p class="font-pixel text-lg mt-1">150</p>
+                </div>
+            </div>
+
+            <!-- Shop Items Section -->
+            <section>
+                <h4 class="font-pixel text-lg text-gray-300 mb-3 mt-4">FEATURED ITEMS</h4>
+                <div class="space-y-3">
+                    <!-- Shop Item Card 1 -->
+                    <div class="pixel-border bg-[#2a2a2a] p-2 flex items-center space-x-3 item-selectable cursor-pointer" data-item-id="zen-headband">
+                        <img src="https://placehold.co/64x64/111/3275a8?text=ITEM" alt="Zen Headband" class="w-16 h-16 pixel-border rarity-rare pointer-events-none">
+                        <div class="flex-grow">
+                            <p class="font-pixel text-sm rarity-rare">Zen Headband</p>
+                            <p class="text-xs text-gray-400">Focus on what matters.</p>
+                        </div>
+                        <div class="text-right">
+                             <p class="font-pixel text-lg text-yellow-400">750</p>
+                             <p class="text-xs text-yellow-500 -mt-1">coins</p>
+                        </div>
+                    </div>
+                    <!-- Shop Item Card 2 -->
+                    <div class="pixel-border bg-[#2a2a2a] p-2 flex items-center space-x-3 item-selectable cursor-pointer" data-item-id="titan-grips">
+                        <img src="https://placehold.co/64x64/111/8332a8?text=ITEM" alt="Titan Grips" class="w-16 h-16 pixel-border rarity-epic pointer-events-none">
+                        <div class="flex-grow">
+                            <p class="font-pixel text-sm rarity-epic">Titan Grips</p>
+                            <p class="text-xs text-gray-400">Unrelenting lifting power.</p>
+                        </div>
+                        <div class="text-right">
+                             <p class="font-pixel text-lg text-cyan-400">120</p>
+                             <p class="text-xs text-cyan-500 -mt-1">gems</p>
+                        </div>
+                    </div>
+                    <!-- Shop Item Card 3 -->
+                    <div class="pixel-border bg-[#2a2a2a] p-2 flex items-center space-x-3 item-selectable cursor-pointer" data-item-id="chrono-treads">
+                        <img src="https://placehold.co/64x64/111/a88b32?text=ITEM" alt="Chrono Treads" class="w-16 h-16 pixel-border rarity-legendary pointer-events-none">
+                        <div class="flex-grow">
+                            <p class="font-pixel text-sm rarity-legendary">Chrono Treads</p>
+                            <p class="text-xs text-gray-400">Run faster than time.</p>
+                        </div>
+                         <div class="text-right">
+                             <p class="font-pixel text-lg text-cyan-400">400</p>
+                             <p class="text-xs text-cyan-500 -mt-1">gems</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<!-- Item Details Modal -->
+<div id="item-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75">
+    <div class="w-full max-w-xs mx-auto pixel-border bg-[#2a2a2a] p-4 text-white space-y-3">
+        <div class="text-center">
+            <h3 id="modal-item-name" class="font-pixel text-lg">ITEM NAME</h3>
+            <p id="modal-item-rarity" class="font-pixel text-sm">RARITY</p>
+        </div>
+        <img id="modal-item-image" src="" alt="item" class="w-32 h-32 pixel-border mx-auto">
+        <div>
+            <h4 class="font-pixel text-sm text-gray-300">STATS</h4>
+            <div id="modal-item-stats" class="text-base space-y-1 mt-1"></div>
+        </div>
+        <div class="flex space-x-2 pt-2">
+             <button id="modal-compare-button" class="pixel-button flex-1 font-pixel text-base py-2 text-cyan-300">COMPARE</button>
+             <button id="modal-buy-button" class="pixel-button flex-1 font-pixel text-base py-2 text-green-400">BUY</button>
+        </div>
+        <button id="modal-close-button" class="pixel-button w-full font-pixel text-base py-2">CANCEL</button>
+    </div>
+</div>
+
+<!-- Item Comparison Modal -->
+<div id="compare-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80">
+    <div class="w-full max-w-sm mx-auto pixel-border bg-[#1c1c1c] p-4 text-white">
+        <h3 class="font-pixel text-lg text-center text-yellow-300 mb-4">EQUIPMENT COMPARISON</h3>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <h4 class="font-pixel text-sm text-gray-400 mb-2 text-center">EQUIPPED</h4>
+                <img id="compare-equipped-image" src="" alt="equipped item" class="w-24 h-24 pixel-border mx-auto">
+                <p id="compare-equipped-name" class="font-pixel text-xs mt-2 truncate text-center"></p>
+                <p id="compare-equipped-rarity" class="font-pixel text-[10px] text-center"></p>
+                <div id="compare-equipped-stats" class="text-left text-xs space-y-1 mt-2"></div>
+            </div>
+            <div>
+                <h4 class="font-pixel text-sm text-green-400 mb-2 text-center">SHOP ITEM</h4>
+                <img id="compare-new-image" src="" alt="new item" class="w-24 h-24 pixel-border mx-auto">
+                <p id="compare-new-name" class="font-pixel text-xs mt-2 truncate text-center"></p>
+                <p id="compare-new-rarity" class="font-pixel text-[10px] text-center"></p>
+                <div id="compare-new-stats" class="text-left text-xs space-y-1 mt-2"></div>
+            </div>
+        </div>
+        <div class="flex space-x-2 mt-4">
+             <button id="compare-cancel-button" class="pixel-button w-full font-pixel text-base py-2 text-red-400">CLOSE</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- DATABASES ---
+
+    // A database for all possible items, including equipped ones
+    const masterItemDatabase = {
+        'og-cap': { name: 'OG Cap', rarity: 'Uncommon', rarityClass: 'rarity-uncommon', imageSrc: 'https://placehold.co/128x128/111/36a832?text=ITEM', slot: 'head', stats: [{ name: 'Style', value: '+5' }, { name: 'Focus', value: '+2' }] },
+        'giga-vest': { name: 'Giga Vest', rarity: 'Legendary', rarityClass: 'rarity-legendary', imageSrc: 'https://placehold.co/128x128/111/a88b32?text=ITEM', slot: 'top', stats: [{ name: 'Strength', value: '+20' }, { name: 'Defense', value: '+15' }] },
+        'pump-v1': { name: 'Pump V1', rarity: 'Rare', rarityClass: 'rarity-rare', imageSrc: 'https://placehold.co/128x128/111/3275a8?text=ITEM', slot: 'shoes', stats: [{ name: 'Speed', value: '+10' }, { name: 'Agility', value: '+5' }] },
+        'power-glove': { name: 'Power Glove', rarity: 'Epic', rarityClass: 'rarity-epic', imageSrc: 'https://placehold.co/128x128/111/8332a8?text=ITEM', slot: 'equipment', stats: [{ name: 'Grip Strength', value: '+15' }] },
+         'zen-headband': { name: 'Zen Headband', rarity: 'Rare', rarityClass: 'rarity-rare', imageSrc: 'https://placehold.co/128x128/111/3275a8?text=ITEM', slot: 'head', stats: [{ name: 'Focus', value: '+12' }, { name: 'Stress Resist', value: '+5' }], price: 750, currency: 'coins' },
+        'titan-grips': { name: 'Titan Grips', rarity: 'Epic', rarityClass: 'rarity-epic', imageSrc: 'https://placehold.co/128x128/111/8332a8?text=ITEM', slot: 'equipment', stats: [{ name: 'Grip Strength', value: '+25' }, { name: 'Lift Power', value: '+10' }], price: 120, currency: 'gems' },
+        'chrono-treads': { name: 'Chrono Treads', rarity: 'Legendary', rarityClass: 'rarity-legendary', imageSrc: 'https://placehold.co/128x128/111/a88b32?text=ITEM', slot: 'shoes', stats: [{ name: 'Speed', value: '+25' }, { name: 'Stamina Regen', value: '+5' }], price: 400, currency: 'gems' }
+    };
+
+    // Represents what the player has equipped.
+    const currentlyEquipped = {
+        head: 'og-cap',
+        top: 'giga-vest',
+        shoes: 'pump-v1',
+        equipment: 'power-glove',
+    };
+
+    // --- DOM ELEMENTS ---
+    const itemModal = document.getElementById('item-modal');
+    const compareModal = document.getElementById('compare-modal');
+    const shopItems = document.querySelectorAll('.item-selectable');
+
+    // --- FUNCTIONS ---
+    function populateStats(container, stats) {
+        container.innerHTML = '';
+        if (stats && stats.length > 0) {
+            stats.forEach(stat => {
+                const el = document.createElement('div');
+                el.className = 'flex justify-between';
+                el.innerHTML = `<span>${stat.name}</span><span>${stat.value}</span>`;
+                container.appendChild(el);
+            });
+        } else {
+            container.innerHTML = `<p class="text-gray-400">No stats</p>`;
+        }
+    }
+    
+    function openItemModal(itemId) {
+        const item = masterItemDatabase[itemId];
+        if (!item) return;
+
+        document.getElementById('modal-item-name').textContent = item.name;
+        const rarityEl = document.getElementById('modal-item-rarity');
+        rarityEl.textContent = item.rarity;
+        rarityEl.className = `font-pixel text-sm ${item.rarityClass}`;
+        
+        const imageEl = document.getElementById('modal-item-image');
+        imageEl.src = item.imageSrc;
+        imageEl.className = `w-32 h-32 pixel-border mx-auto ${item.rarityClass}`;
+
+        populateStats(document.getElementById('modal-item-stats'), item.stats);
+
+        document.getElementById('modal-compare-button').onclick = () => openCompareModal(item);
+        
+        itemModal.classList.remove('hidden');
+    }
+
+    function closeItemModal() { itemModal.classList.add('hidden'); }
+
+    function openCompareModal(newItem) {
+        const equippedItemId = currentlyEquipped[newItem.slot];
+        const equippedItem = masterItemDatabase[equippedItemId];
+        
+        // Populate new item details
+        document.getElementById('compare-new-image').src = newItem.imageSrc;
+        document.getElementById('compare-new-name').textContent = newItem.name;
+        const newRarityEl = document.getElementById('compare-new-rarity');
+        newRarityEl.textContent = newItem.rarity;
+        newRarityEl.className = `font-pixel text-[10px] text-center ${newItem.rarityClass}`;
+        document.getElementById('compare-new-image').className = `w-24 h-24 pixel-border mx-auto ${newItem.rarityClass}`
+        populateStats(document.getElementById('compare-new-stats'), newItem.stats);
+
+        // Populate equipped item details
+        document.getElementById('compare-equipped-image').src = equippedItem.imageSrc;
+        document.getElementById('compare-equipped-name').textContent = equippedItem.name;
+        const equippedRarityEl = document.getElementById('compare-equipped-rarity');
+        equippedRarityEl.textContent = equippedItem.rarity;
+        equippedRarityEl.className = `font-pixel text-[10px] text-center ${equippedItem.rarityClass}`;
+         document.getElementById('compare-equipped-image').className = `w-24 h-24 pixel-border mx-auto ${equippedItem.rarityClass}`
+        populateStats(document.getElementById('compare-equipped-stats'), equippedItem.stats);
+
+        closeItemModal();
+        compareModal.classList.remove('hidden');
+    }
+
+    function closeCompareModal() { compareModal.classList.add('hidden'); }
+
+    // --- EVENT LISTENERS ---
+    shopItems.forEach(item => {
+        item.addEventListener('click', (e) => openItemModal(e.currentTarget.dataset.itemId));
+    });
+
+    document.getElementById('modal-close-button').addEventListener('click', closeItemModal);
+    itemModal.addEventListener('click', e => { if (e.target === itemModal) closeItemModal(); });
+
+    document.getElementById('compare-cancel-button').addEventListener('click', closeCompareModal);
+    compareModal.addEventListener('click', e => { if (e.target === compareModal) closeCompareModal(); });
+
+</script>
+{% endblock %}

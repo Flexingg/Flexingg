@@ -394,7 +394,7 @@ input[type="password"].pixel-input:focus {
         // Initialize PWA
         if ('serviceWorker' in navigator) {
             console.log('[PWA] Service Worker is supported');
-            navigator.serviceWorker.register('/static/app/sw.js', {
+            navigator.serviceWorker.register('/sw.js', {
                 scope: '/',
                 updateViaCache: 'none'
             })

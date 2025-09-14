@@ -37,10 +37,6 @@ self.addEventListener('install', event => {
                 log('Caching app shell and static assets');
                 return cache.addAll(ASSETS_TO_CACHE);
             })
-            .then(() => {
-                log('Skip waiting on install');
-                return self.skipWaiting();
-            })
             .catch(error => {
                 log('Error caching static assets:', error);
             })
@@ -63,10 +59,6 @@ self.addEventListener('activate', event => {
                         }
                     })
                 );
-            }),
-            // Take control of all clients
-            self.clients.claim().then(() => {
-                log('Service Worker is now controlling all clients');
             })
         ])
     );
@@ -74,7 +66,6 @@ self.addEventListener('activate', event => {
 
 // Fetch event - network first with cache fallback
 self.addEventListener('fetch', event => {
-    log('Fetch event for:', event.request.url);
     
     // Handle navigation requests
     if (event.request.mode === 'navigate') {

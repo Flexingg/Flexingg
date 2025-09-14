@@ -1,5 +1,5 @@
 from celery import shared_task
-from .views import ensure_valid_tokens
+from .utils import ensure_valid_tokens
 from .models import Garmin_Auth, GarminDailySteps, GarminActivity
 from core.models import UserProfile, Transaction
 from django.utils import timezone
@@ -56,10 +56,11 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
         garth.client.configure(oauth1_token=oauth1_token, oauth2_token=oauth2_token)
 
         # Sync steps for each day in range
+        local_today = timezone.localtime().date()
         current_date = start_date
         while current_date <= end_date:
             try:
-                if current_date > timezone.now().date():
+                if current_date > local_today:
                     current_date += timedelta(days=1)
                     continue
 
@@ -82,7 +83,6 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
                             defaults={'steps': steps}
                         )
                         if created: steps_synced += 1
-
             except Exception as step_err:
                 logger.error(f"Error syncing steps for {current_date} for user {user.id}: {step_err}")
 
@@ -206,10 +206,8 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
                     defaults=defaults
                 )
                 if created: activities_synced += 1
-
-                # Integrate CardioCoin rewards
+                # Process CardioCoin rewards for the activity
                 if obj.calories and obj.calories > 0:
-                    from core.models import Transaction
                     if not Transaction.objects.filter(
                         user=user,
                         currency_type='cardio_coins',
@@ -220,6 +218,7 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
                         activity_date = obj.start_time_utc.date()
                         if join_month_start <= activity_date <= one_week_after:
                             user.earn_cardio_coins(Decimal(str(obj.calories)), garmin_activity=obj)
+
 
             except Exception as act_err:
                 logger.error(f"Error processing activity {activity.get('activityId', 'N/A')} for user {user.id}: {act_err}")

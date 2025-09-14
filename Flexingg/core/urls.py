@@ -10,20 +10,13 @@ urlpatterns = [
     path('sign-out/', SignOutView.as_view(), name='sign_out'),
     path('settings/', SettingsView.as_view(), name='settings'),
     
-    path('steps-chart-data/', StepsChartDataView.as_view(), name='steps_chart_data'),
 
-    # Calories Chart Data URL
-    path('api/calories/chart-data/', get_calories_chart_data, name='calories-chart-data'),
-    # Steps Chart Data URL
-    path('api/steps/chart-data/', get_steps_chart_data, name='steps-chart-data'),
-    # Sweat Score Chart Data URL
-    path('api/sweat-score/chart-data/', get_sweat_score_chart_data, name='sweat-score-chart-data'),
-
-    # Background Garmin Sync
-    path('background-garmin-sync/', BackgroundGarminSyncView.as_view(), name='background_garmin_sync'),
-
-    # Leaderboards
-    path('leaderboards/', lambda request: redirect('fitness:leaderboards', permanent=False, metric='cardiocoins', period='all'), name='leaderboards_default'),
-    path('leaderboards/<str:metric>/<str:period>/', LeaderboardView.as_view(), name='leaderboards'),
+    # Placeholders
     path('comingsoon/', ComingSoonView.as_view(), name='comingsoon'),
+    path('offline/', OfflineView.as_view(), name='offline'),
+    path('sw.js', ServiceWorkerView.as_view(), name='service_worker'),
+    path('profile/', ProfileView.as_view(), name='profile'),
+    path('gym/', GymView.as_view(), name='gym'),
+    path('locker_room/', LockerRoomView.as_view(), name='locker_room'),    
+    path('shop/', ShopView.as_view(), name='shop'),
 ]

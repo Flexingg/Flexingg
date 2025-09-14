@@ -36,15 +36,15 @@
             <img src="{% static 'icons/world.png' %}" alt="Social" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Social</span>
         </a>
-        <a href="{% url 'fitness:comingsoon' %}" data-tab="gym" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+        <a href="{% url 'fitness:gym' %}" data-tab="gym" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a] {% if request.path == '/gym/' %}text-[#00f5d4] nav-icon-active-desktop{% endif %}">
             <img src="{% static 'icons/dumbbell.png' %}" alt="Gym" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Gym</span>
         </a>
-        <a href="{% url 'fitness:comingsoon' %}" data-tab="lockers" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+        <a href="{% url 'fitness:locker_room' %}" data-tab="lockers" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
             <img src="{% static 'icons/locker.png' %}" alt="Lockers" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Lockers</span>
         </a>
-        <a href="{% url 'fitness:comingsoon' %}" data-tab="profile" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+        <a href="{% url 'fitness:profile' %}" data-tab="profile" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
             <img src="{% static 'icons/person.png' %}" alt="Profile" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Profile</span>
         </a>
@@ -53,7 +53,7 @@
             <img src="{% static 'icons/world.png' %}" alt="Social" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Social</span>
         </a>
-        <a href="{% url 'fitness:sign_in' %}" data-tab="gym" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a]">
+        <a href="{% url 'fitness:sign_in' %}" data-tab="gym" class="flex items-center p-3 rounded-lg text-gray-500 hover:text-white hover:bg-[#2a2a2a] {% if request.path == '/gym/' %}text-[#00f5d4] nav-icon-active-desktop{% endif %}">
             <img src="{% static 'icons/dumbbell.png' %}" alt="Gym" class="w-6 h-6 flex-shrink-0">
             <span class="text-sm font-pixel ml-3">Gym</span>
         </a>
@@ -80,15 +80,15 @@
         <img src="{% static 'icons/world.png' %}" alt="Social" class="w-7 h-7 flex-shrink-0">
         <span class="text-xs font-pixel mt-1 {% if request.path == '/social/' %}text-[#00f5d4]{% endif %}">Social</span>
     </a>
-    <a href="{% url 'fitness:comingsoon' %}" data-tab="gym" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
+    <a href="{% url 'fitness:gym' %}" data-tab="gym" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500 {% if request.path == '/gym/' %}text-[#00f5d4] nav-icon-active{% endif %}">
         <img src="{% static 'icons/dumbbell.png' %}" alt="Gym" class="w-7 h-7 flex-shrink-0">
-        <span class="text-xs font-pixel mt-1">Gym</span>
+        <span class="text-xs font-pixel mt-1 {% if request.path == '/gym/' %}text-[#00f5d4]{% endif %}">Gym</span>
     </a>
-    <a href="{% url 'fitness:comingsoon' %}" data-tab="lockers" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
+    <a href="{% url 'fitness:locker_room' %}" data-tab="lockers" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
         <img src="{% static 'icons/locker.png' %}" alt="Lockers" class="w-7 h-7 flex-shrink-0">
         <span class="text-xs font-pixel mt-1">Lockers</span>
     </a>
-    <a href="{% url 'fitness:comingsoon' %}" data-tab="profile" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
+    <a href="{% url 'fitness:profile' %}" data-tab="profile" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
         <img src="{% static 'icons/person.png' %}" alt="Profile" class="w-7 h-7 flex-shrink-0">
         <span class="text-xs font-pixel mt-1">Profile</span>
     </a>
@@ -97,9 +97,9 @@
         <img src="{% static 'icons/world.png' %}" alt="Social" class="w-7 h-7 flex-shrink-0">
         <span class="text-xs font-pixel mt-1">Social</span>
     </a>
-    <a href="{% url 'fitness:sign_in' %}" data-tab="gym" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
+    <a href="{% url 'fitness:sign_in' %}" data-tab="gym" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500 {% if request.path == '/gym/' %}text-[#00f5d4] nav-icon-active{% endif %}">
         <img src="{% static 'icons/dumbbell.png' %}" alt="Gym" class="w-7 h-7 flex-shrink-0">
-        <span class="text-xs font-pixel mt-1">Gym</span>
+        <span class="text-xs font-pixel mt-1 {% if request.path == '/gym/' %}text-[#00f5d4]{% endif %}">Gym</span>
     </a>
     <a href="{% url 'fitness:sign_in' %}" data-tab="lockers" class="flex-1 flex flex-col items-center justify-center p-2 text-gray-500">
         <img src="{% static 'icons/locker.png' %}" alt="Lockers" class="w-7 h-7 flex-shrink-0">

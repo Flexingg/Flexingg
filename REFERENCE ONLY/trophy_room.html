@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flexin.gg - Trophy Room</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #121212; color: #E0E0E0; }
+        .font-pixel { font-family: 'Press Start 2P', cursive; }
+        .pixel-border { border: 4px solid #444; box-shadow: inset -4px -4px 0px 0px #222, inset 4px 4px 0px 0px #555; image-rendering: pixelated; }
+        .pixel-button { border: 4px solid #333; background-color: #2a2a2a; box-shadow: inset -4px -4px 0px 0px #1a1a1a, 4px 4px 0px 0px #000; transition: all 0.1s ease-in-out; }
+        .pixel-button:active { transform: translate(4px, 4px); box-shadow: inset -2px -2px 0px 0px #1a1a1a; }
+        
+        /* Accordion styles */
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; background-color: #1e1e1e; }
+        .accordion-header .arrow { transition: transform 0.3s ease-out; }
+        .accordion-header.active .arrow { transform: rotate(90deg); }
+
+        /* Record style */
+        .record-entry { transition: background-color 0.2s ease-out; }
+        .record-entry:hover { background-color: #3a3a3a; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-50">
+
+    <!-- Mobile Screen Container -->
+    <div class="w-full max-w-sm mx-auto min-h-screen bg-[#1c1c1c] flex flex-col overflow-hidden">
+
+        <!-- Main Content -->
+        <main class="flex-grow p-4 overflow-y-auto space-y-4">
+            
+            <h3 class="font-pixel text-2xl text-center text-[#f7b801] pt-2">TROPHY ROOM</h3>
+            
+            <div class="text-center py-2">
+                <a href="#" class="pixel-button font-pixel text-lg text-gray-300 px-8 py-3 inline-block">
+                    LOCKER ROOM
+                </a>
+            </div>
+
+            <!-- PRs Section -->
+            <section class="space-y-3">
+                
+                <!-- Endurance Category -->
+                <div class="pixel-border bg-[#2a2a2a]">
+                    <div class="accordion-header p-3 flex justify-between items-center cursor-pointer">
+                        <h4 class="font-pixel text-lg text-green-400">ENDURANCE</h4>
+                        <span class="arrow font-pixel text-green-400 text-2xl">></span>
+                    </div>
+                    <div class="accordion-content">
+                        <div class="border-t-4 border-[#1e1e1e] space-y-1">
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="calories-day" data-record-name="Most Calories (Day)" data-user-score="1204">
+                               <span class="text-gray-300">Most Calories (Day)</span>
+                               <span class="font-pixel text-lg text-white">1,204</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="calories-week" data-record-name="Most Calories (Week)" data-user-score="7592">
+                               <span class="text-gray-300">Most Calories (Week)</span>
+                               <span class="font-pixel text-lg text-white">7,592</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="calories-month" data-record-name="Most Calories (Month)" data-user-score="28113">
+                               <span class="text-gray-300">Most Calories (Month)</span>
+                               <span class="font-pixel text-lg text-white">28,113</span>
+                           </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Volume Category -->
+                <div class="pixel-border bg-[#2a2a2a]">
+                    <div class="accordion-header p-3 flex justify-between items-center cursor-pointer">
+                        <h4 class="font-pixel text-lg text-cyan-400">VOLUME</h4>
+                         <span class="arrow font-pixel text-cyan-400 text-2xl">></span>
+                    </div>
+                    <div class="accordion-content">
+                         <div class="border-t-4 border-[#1e1e1e] space-y-1">
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="volume-day" data-record-name="Most Volume (Day)" data-user-score="24500">
+                               <span class="text-gray-300">Most Volume (Day)</span>
+                               <span class="font-pixel text-lg text-white">24,500 lbs</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="volume-week" data-record-name="Most Volume (Week)" data-user-score="110250">
+                               <span class="text-gray-300">Most Volume (Week)</span>
+                               <span class="font-pixel text-lg text-white">110,250 lbs</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="volume-month" data-record-name="Most Volume (Month)" data-user-score="405800">
+                               <span class="text-gray-300">Most Volume (Month)</span>
+                               <span class="font-pixel text-lg text-white">405,800 lbs</span>
+                           </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strength Category -->
+                 <div class="pixel-border bg-[#2a2a2a]">
+                    <div class="accordion-header p-3 flex justify-between items-center cursor-pointer">
+                        <h4 class="font-pixel text-lg text-red-400">STRENGTH</h4>
+                         <span class="arrow font-pixel text-red-400 text-2xl">></span>
+                    </div>
+                    <div class="accordion-content">
+                         <div class="border-t-4 border-[#1e1e1e] space-y-1">
+                           <p class="text-sm text-gray-400 text-center pt-3 pb-1">-- 1 REP MAX --</p>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="max-bench" data-record-name="Bench Press 1RM" data-user-score="225">
+                               <span class="text-gray-300">Bench Press</span>
+                               <span class="font-pixel text-lg text-white">225 lbs</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="max-squat" data-record-name="Squat 1RM" data-user-score="315">
+                               <span class="text-gray-300">Squat</span>
+                               <span class="font-pixel text-lg text-white">315 lbs</span>
+                           </div>
+                           <div class="record-entry p-3 flex justify-between items-baseline cursor-pointer" data-record-id="max-deadlift" data-record-name="Deadlift 1RM" data-user-score="405">
+                               <span class="text-gray-300">Deadlift</span>
+                               <span class="font-pixel text-lg text-white">405 lbs</span>
+                           </div>
+                         </div>
+                    </div>
+                </div>
+
+            </section>
+        </main>
+    </div>
+    
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80">
+        <div class="w-full max-w-sm mx-auto pixel-border bg-[#1c1c1c] p-4 text-white flex flex-col" style="height: 80vh;">
+            <h3 id="leaderboard-title" class="font-pixel text-base text-center text-yellow-300 mb-4 flex-shrink-0">GLOBAL LEADERBOARD</h3>
+            <div class="pixel-border bg-black/50 p-2 flex-grow overflow-y-auto">
+                <div id="leaderboard-list" class="space-y-2">
+                    <!-- Ranks will be populated by JS -->
+                </div>
+            </div>
+            <div class="flex-shrink-0 mt-4">
+                 <button id="leaderboard-close-button" class="pixel-button w-full font-pixel text-base py-2 text-red-400">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- LEADERBOARD DUMMY DATA ---
+        const leaderboardData = {
+            'calories-day': [ { name: 'GymRat99', score: 1450 }, { name: 'CardioQueen', score: 1380 }, { name: 'You', score: 1204 }, { name: 'IronMike', score: 1150 }, { name: 'Flexinator', score: 980 } ],
+            'calories-week': [ { name: 'EnduroMan', score: 9800 }, { name: 'You', score: 7592 }, { name: 'TheBlur', score: 7550 }, { name: 'TreadmillTerry', score: 7100 } ],
+            'calories-month': [ { name: 'Marathoner', score: 35000 }, { name: 'You', score: 28113 }, { name: 'CardioQueen', score: 27500 }, { name: 'GymRat99', score: 25000 } ],
+            'volume-day': [ { name: 'TheGrinder', score: 30000 }, { name: 'LiftMore', score: 28500 }, { name: 'You', score: 24500 }, { name: 'Pumper', score: 22000 } ],
+            'volume-week': [ { name: 'VolumeKing', score: 150000 }, { name: 'You', score: 110250 }, { name: 'TheGrinder', score: 105000 }, { name: 'IronMike', score: 98000 } ],
+            'volume-month': [ { name: 'Mr.Universe', score: 500000 }, { name: 'You', score: 405800 }, { name: 'VolumeKing', score: 401000 }, { name: 'LiftMore', score: 380000 } ],
+            'max-bench': [ { name: 'BenchPressBro', score: 315 }, { name: 'Chesticles', score: 275 }, { name: 'You', score: 225 }, { name: 'IronMike', score: 220 } ],
+            'max-squat': [ { name: 'Quadzilla', score: 495 }, { name: 'LegDayLarry', score: 450 }, { name: 'You', score: 315 }, { name: 'TheGrinder', score: 300 } ],
+            'max-deadlift': [ { name: 'Dr.Pull', score: 585 }, { name: 'You', score: 405 }, { name: 'SpineSaver', score: 385 }, { name: 'Quadzilla', score: 375 } ],
+        };
+
+        // --- ACCORDION LOGIC ---
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const content = header.nextElementSibling;
+                const wasActive = header.classList.contains('active');
+                // Close all accordions
+                document.querySelectorAll('.accordion-header').forEach(h => {
+                    h.classList.remove('active');
+                    h.nextElementSibling.style.maxHeight = null;
+                });
+                // Open the clicked one if it wasn't already open
+                if (!wasActive) {
+                    header.classList.add('active');
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
+        });
+
+        // --- LEADERBOARD MODAL LOGIC ---
+        const modal = document.getElementById('leaderboard-modal');
+        const modalTitle = document.getElementById('leaderboard-title');
+        const modalList = document.getElementById('leaderboard-list');
+        const closeModalButton = document.getElementById('leaderboard-close-button');
+
+        function openLeaderboardModal(recordId, recordName, userScore) {
+            const data = leaderboardData[recordId] || [];
+            // Ensure user is in data if not already present
+            if (!data.some(p => p.name === 'You')) {
+                data.push({ name: 'You', score: parseInt(userScore) });
+            }
+            // Sort by score descending
+            data.sort((a, b) => b.score - a.score);
+
+            modalTitle.textContent = recordName;
+            modalList.innerHTML = ''; // Clear previous list
+
+            data.forEach((player, index) => {
+                const isUser = player.name === 'You';
+                const rank = index + 1;
+                const scoreFormatted = player.score.toLocaleString();
+                const suffix = (recordId.startsWith('max-') || recordId.startsWith('volume-')) ? ' lbs' : '';
+                
+                const entry = document.createElement('div');
+                entry.className = `flex items-center p-2 rounded ${isUser ? 'bg-yellow-600/50 border-2 border-yellow-400' : 'bg-gray-700/50'}`;
+                entry.innerHTML = `
+                    <div class="w-1/6 font-pixel text-lg ${isUser ? 'text-yellow-300' : 'text-gray-300'}">#${rank}</div>
+                    <div class="w-3/6 font-pixel text-sm truncate ${isUser ? 'text-white' : 'text-gray-300'}">${player.name}</div>
+                    <div class="w-2/6 font-pixel text-base text-right ${isUser ? 'text-white' : 'text-gray-300'}">${scoreFormatted}${suffix}</div>
+                `;
+                modalList.appendChild(entry);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeLeaderboardModal() {
+            modal.classList.add('hidden');
+        }
+
+        document.querySelectorAll('.record-entry').forEach(entry => {
+            entry.addEventListener('click', (e) => {
+                const target = e.currentTarget;
+                openLeaderboardModal(
+                    target.dataset.recordId,
+                    target.dataset.recordName,
+                    target.dataset.userScore
+                );
+            });
+        });
+        
+        closeModalButton.addEventListener('click', closeLeaderboardModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeLeaderboardModal();
+            }
+        });
+
+    </script>
+</body>
+</html>
+

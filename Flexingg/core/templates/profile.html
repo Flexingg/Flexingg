@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+
+{% block title %}Profile - Flexin.gg{% endblock %}
+
+{% block extra_head %}
+<style>
+.progress-bar-container {
+    height: 20px;
+    background-color: #222;
+    border: 2px solid #444;
+}
+.progress-bar {
+    height: 100%;
+    background-color: #00f5d4;
+    box-shadow: inset -2px -2px 0px #00b3a4, inset 2px 2px 0px #5cfff0;
+    image-rendering: pixelated;
+}
+.stat-card {
+    border: 4px solid #444;
+    background-color: #2a2a2a;
+    box-shadow: inset -4px -4px 0px 0px #222, inset 4px 4px 0px 0px #555;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-6 space-y-8">
+    
+    <!-- Profile Header -->
+    <section class="pixel-border bg-[#2a2a2a] p-4 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+        <img src="{% if user.avatar %}{{ user.avatar.url }}{% else %}https://placehold.co/96x96/222/00f5d4?text=AV{% endif %}" alt="User Avatar" class="w-24 h-24 pixel-border object-cover" style="image-rendering: pixelated;">
+        <div class="w-full text-center md:text-left">
+            <h2 class="font-pixel text-2xl text-white">{{ user.username|default:"Player" }}</h2>
+            <p class="font-pixel text-yellow-300 text-sm mt-1">Level {{ user.level|default:1 }} Brawler</p>
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-pixel text-xs text-gray-400">XP</span>
+                    <span class="font-pixel text-xs text-gray-400">{{ user.xp|default:0 }} / 20000</span>
+                </div>
+                <div class="progress-bar-container w-full">
+                    <div class="progress-bar" style="width: {% widthratio user.xp 20000 100 %}%"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Top Stats -->
+    <section>
+        <h3 class="font-pixel text-lg text-[#00f5d4]">TOP STATS</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Calories Burned</p>
+                    <p class="font-pixel text-xl text-white mt-1">0</p>
+                </div>
+            </div>
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-12v4m-2-2h4m6 4v4m-2-2h4M17 3h4m-4 5v4m-2-2h4m-5 6v4m-2-2h4"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Weight Lifted</p>
+                    <p class="font-pixel text-xl text-white mt-1">0 lbs</p>
+                </div>
+            </div>
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Total Sleep</p>
+                    <p class="font-pixel text-xl text-white mt-1">0 hrs</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Latest Activities -->
+    <section>
+        <h3 class="font-pixel text-lg text-yellow-300">LATEST ACTIVITIES</h3>
+        <div class="space-y-4 mt-3">
+            <div class="pixel-border bg-[#2a2a2a] p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-pixel text-sm text-cyan-300">Morning Run</p>
+                        <p class="text-xs text-gray-400 mt-1">Yesterday - 6:30 AM</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-pixel text-xl text-white">0 mi</p>
+                        <p class="text-xs text-gray-400 mt-1">0 min</p>
+                    </div>
+                </div>
+                <div class="mt-3 text-right">
+                    <span class="inline-block bg-[#1a1a1a] border border-[#444] text-green-400 text-xs font-pixel px-2 py-1">+0 XP</span>
+                </div>
+            </div>
+            <div class="pixel-border bg-[#2a2a2a] p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-pixel text-sm text-red-400">Chest Day</p>
+                        <p class="text-xs text-gray-400 mt-1">2 days ago - 5:00 PM</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-pixel text-xl text-white">0 lbs</p>
+                        <p class="text-xs text-gray-400 mt-1">0 min</p>
+                    </div>
+                </div>
+                <div class="mt-3 text-right">
+                    <span class="inline-block bg-[#1a1a1a] border border-[#444] text-green-400 text-xs font-pixel px-2 py-1">+0 XP</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
