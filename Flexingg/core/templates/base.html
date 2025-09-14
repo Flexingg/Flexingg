@@ -428,7 +428,7 @@ input[type="password"].pixel-input:focus {
         <div class="desktop-content flex flex-col min-h-screen">
             <header class="sticky top-0 z-50 border-b-4 border-black" style="background-color: #2a2a2a !important;">
                 {% block top_bar_content %}
-                    {% component "top_navigation" %}{% endcomponent %}
+                    {% component "top_navigation" user=request.user %}{% endcomponent %}
                 {% endblock %}
             </header>
 

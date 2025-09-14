@@ -32,7 +32,12 @@
             </form>
         </div>
         {% else %}
-        <button id="liftosaur-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+        <div class="flex space-x-2">
+            <button id="liftosaur-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+            {% if not has_liftosaur_token %}
+            <button id="liftosaur-advanced-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Advanced Sync</button>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
     <div class="flex items-center justify-between">
@@ -76,7 +81,7 @@
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
         <h3 class="font-pixel text-lg text-white mb-4">Connect Liftosaur</h3>
         <p class="font-pixel text-sm text-gray-300 mb-4">
-            1. Go to <a href="https://www.liftosaur.com/app/" class="text-cyan-300 underline">https://www.liftosaur.com/app/</a><br>
+            1. Go to <a href="https://www.liftosaur.com/app/" class="text-xs text-cyan-300 underline">https://www.liftosaur.com/app/</a><br>
             2. Select "Me" (bottom right corner)<br>
             3. Select "Export data to JSON file"<br>
             4. Upload the JSON file below
@@ -96,6 +101,36 @@
 </div>
 {% endif %}
 
+<!-- Advanced Liftosaur Sync Modal only shown if not connected -->
+{% if not liftosaur_connected %}
+<div id="liftosaur-advanced-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96 max-h-[80vh] overflow-y-auto">
+        <h3 class="font-pixel text-lg text-white mb-4">Advanced Automatic Syncing</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            To enable automatic syncing, extract your Liftosaur session token:<br><br>
+            <ol class="list-decimal list-inside space-y-1 text-sm">
+                <li>On a desktop, log in to Liftosaur.</li>
+                <li>Inspect the page (right click, inspect element).</li>
+                <li>Click the Network tab.</li>
+                <li>Click on a request and look in the Cookies tab.</li>
+                <li>Find the "session" value, and paste it here:</li>
+            </ol>
+        </p>
+        <form id="liftosaur-token-form" method="post" action="{% url 'liftosaur:save_token' %}" class="w-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Liftosaur Session Token</label>
+                <input type="text" name="liftosaur_session_token" required class="pixel-input w-full" placeholder="Paste the session value here"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="toggleLiftosaurAdvancedModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Inline DOM loaded for integrations');
@@ -108,6 +143,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         console.log('Inline Liftosaur connect button not found');
+    }
+
+    // Advanced Sync button handler
+    const advancedBtn = document.getElementById('liftosaur-advanced-btn');
+    console.log('Advanced Sync button:', advancedBtn);
+    if (advancedBtn) {
+        advancedBtn.addEventListener('click', function() {
+            console.log('Advanced Sync button clicked');
+            toggleLiftosaurAdvancedModal();
+        });
+    } else {
+        console.log('Advanced Sync button not found');
     }
 
     // Handle Liftosaur sync with AJAX to avoid page refresh
@@ -176,6 +223,40 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Liftosaur import form not found');
     }
 
+    // Handle Liftosaur token form with AJAX
+    const tokenForm = document.getElementById('liftosaur-token-form');
+    if (tokenForm) {
+        tokenForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('Liftosaur token form submitted via AJAX');
+            const formData = new FormData(tokenForm);
+            fetch('/liftosaur/save-token/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Token response:', data);
+                if (data.status === 'success') {
+                    alert(data.message || 'Token saved and Liftosaur connected successfully!');
+                    toggleLiftosaurAdvancedModal();
+                    location.reload(); // Reload to update connected status
+                } else {
+                    alert('Failed: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Token error:', error);
+                alert('An error occurred while saving the token.');
+            });
+        });
+    } else {
+        console.log('Liftosaur token form not found');
+    }
+
     // Modal toggle function for Liftosaur
     window.toggleLiftosaurModal = function() {
         console.log('toggleLiftosaurModal called inline');
@@ -186,6 +267,19 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Inline Liftosaur hidden class toggled');
         } else {
             console.log('Inline Liftosaur modal not found');
+        }
+    };
+
+    // Advanced modal toggle function
+    window.toggleLiftosaurAdvancedModal = function() {
+        console.log('toggleLiftosaurAdvancedModal called');
+        const modal = document.getElementById('liftosaur-advanced-modal');
+        console.log('Advanced modal element:', modal);
+        if (modal) {
+            modal.classList.toggle('hidden');
+            console.log('Advanced hidden class toggled');
+        } else {
+            console.log('Advanced modal not found');
         }
     };
 
@@ -200,6 +294,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         console.log('Inline Liftosaur modal not found on DOM load');
+    }
+
+    // Close advanced modal when clicking outside
+    const advancedModal = document.getElementById('liftosaur-advanced-modal');
+    if (advancedModal) {
+        advancedModal.addEventListener('click', function(e) {
+            if (e.target === advancedModal) {
+                advancedModal.classList.add('hidden');
+                console.log('Advanced modal closed by outside click');
+            }
+        });
+    } else {
+        console.log('Advanced modal not found on DOM load');
     }
 });
 </script>

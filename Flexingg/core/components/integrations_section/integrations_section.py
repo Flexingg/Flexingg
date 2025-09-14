@@ -11,8 +11,10 @@ class IntegrationsSection(component.Component):
         if profile:
             garmin_connected = Garmin_Auth.objects.filter(user=profile).exists()
             liftosaur_connected = bool(profile.liftosaur_user_id)
+            has_liftosaur_token = bool(profile.liftosaur_session_token)
             context['garmin_connected'] = garmin_connected
             context['liftosaur_connected'] = liftosaur_connected
+            context['has_liftosaur_token'] = has_liftosaur_token
         return context
 
     class Media:

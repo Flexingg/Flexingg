@@ -121,6 +121,15 @@
         const tabs = ['dash', 'social', 'gym', 'lockers', 'profile'];
         const activeKey = 'activeNavTab';
 
+        // Map paths to tabs
+        const pathToTab = {
+            '/': 'dash',
+            '/social/': 'social',
+            '/gym/': 'gym',
+            '/locker/': 'lockers',  // Adjust if locker room path differs
+            '/profile/': 'profile'  // Adjust if profile path differs
+        };
+
         function updateActive(tab) {
             // Update desktop
             if (desktopNav) {
@@ -147,8 +156,9 @@
             localStorage.setItem(activeKey, tab);
         }
 
-        // Initial load
-        let activeTab = localStorage.getItem(activeKey) || 'dash';
+        // Detect current tab from path, fallback to localStorage or 'dash'
+        let currentPath = window.location.pathname;
+        let activeTab = pathToTab[currentPath] || localStorage.getItem(activeKey) || 'dash';
         updateActive(activeTab);
 
         // Click handlers

@@ -1,94 +1,73 @@
-# Plan for Importing Liftosaur Workout Data into Django Models
+# Health Connect Integration Gameplan
 
-## 1. Analysis of Current State
-### Current Models (from Flexingg/liftosaur/models.py)
-- **Exercise**: Basic exercise types (id, name). Maps to JSON's exercise objects (e.g., {"equipment": "barbell", "id": "squat"}).
-- **UserExerciseStat**: User-specific 1RM data (user, exercise, rm1_value, rm1_unit). Can populate from JSON's "exerciseData" (e.g., "squat_barbell": {"rm1": {"value": 195, "unit": "lb"}}).
-- **Workout**: Workout sessions (id, user, timestamp, name, gym_id, program_id). Maps to JSON's "history" array items (e.g., "id", "user" via email/user_id, "timestamp" from "date", "programId").
-- **WorkoutExercise**: Exercises in a workout (workout, exercise_name, note, timestamp). Partially maps to JSON's "entries" (programExerciseId, exercise, notes, state.timestamp), but lacks set-level details.
-- **BodyMeasurement**: Bodyweight/measurements (user, type, value, unit, timestamp). Directly maps to JSON's "currentBodyweight" and potentially history if more measurements exist.
-- **Program**: Stores full program JSON (user, external_id, name, data). Can store JSON's "programs" array items.
+## Overview
+This plan outlines integrating Google's Health Connect data into the Flexingg Django application using the HCGateway API (Docker service at http://localhost:6644). The goal is to allow users to connect their HCGateway account, fetch all available Health Connect data types (e.g., steps, heartRate, activeCaloriesBurned, etc.), and store raw records in the Django database linked to their UserProfile. No gamification (e.g., mapping to currencies/XP) is implemented yet – focus on ingestion and storage. Future phases can add utilization.
 
-### JSON Structure (from REFERENCE ONLY/liftosaur_data (small).json)
-- **storage.settings**: User prefs (currentGymId, currentBodyweight, equipment configs, exerciseData for 1RMs).
-- **storage.history**: Array of workout records. Each record has:
-  - "id", "programId", "date" (timestamp), "dayName", "entries" (array of exercises).
-  - Each entry: "programExerciseId", "exercise" ({"equipment", "id"}), "notes", "state" (successes, failures, weights), "sets" (array: reps, weight, completedReps, completedWeight, timestamp, isCompleted, isAmrap, logRpe, completedRpe), "warmupSets" (similar but simpler).
-- **storage.programs**: Array of programs with "id", "name", "days" (exercises with ids, states), "weeks".
-- **storage.stats**: Empty in sample, but could have aggregates.
-- Key goal: Import every rep means storing per-set data (completedReps, completedWeight, etc.) for analysis (e.g., volume, PRs).
+Key Benefits:
+- Centralized fitness data alongside Garmin/Liftosaur.
+- Enables future features like cross-integration analytics, rewards.
+- Uses API for secure, structured access (no direct MongoDB).
 
-### Gaps Identified
-- No model for individual sets/reps. WorkoutExercise only captures exercise-level summary; can't store granular set data like reps, weights, RPE, timestamps per set.
-- No distinction between working sets and warmup sets.
-- Program model stores raw JSON, but for full integration, may need parsed ProgramDay, ProgramExercise models.
-- No import mechanism (e.g., Celery task) to parse JSON and create DB instances.
-- User linking: JSON has "email" and "user_id"; map to UserProfile via email or liftosaur_user_id field.
-- Equipment/Gym: JSON has detailed equipment; current models don't store this, but could add if needed for calculations.
+Assumptions:
+- HCGateway Docker is running (ports 6644 for API, 27017 for Mongo).
+- Users have HCGateway accounts via Android app.
+- All data types fetched via /fetch/{method} endpoints.
+- Tokens expire in 12h; auto-refresh on sync.
 
-## 2. Proposed Changes
-### Model Updates/Additions (in liftosaur/models.py)
-- **New: WorkoutSet** (linked to WorkoutExercise):
-  - id (UUID)
-  - workout_exercise (ForeignKey to WorkoutExercise)
-  - set_order (IntegerField)  # e.g., 1,2,3 for working sets; negative for warmups (e.g., -1,-2)
-  - reps (FloatField, null=True)  # Planned reps
-  - weight_value (FloatField, null=True)
-  - weight_unit (CharField, max_length=10, default='lb')
-  - completed_reps (IntegerField, default=0)
-  - completed_weight_value (FloatField, null=True)
-  - completed_weight_unit (CharField, max_length=10, null=True)
-  - rpe (IntegerField, null=True)  # Planned RPE
-  - completed_rpe (IntegerField, null=True)
-  - is_amrap (BooleanField, default=False)
-  - is_completed (BooleanField, default=False)
-  - timestamp (DateTimeField, null=True)  # Set completion time
-  - is_warmup (BooleanField, default=False)
-  - notes (TextField, blank=True)
-  - Meta: ordering = ['set_order']
+## Architecture
+- **New Django App**: `healthconnect` – Contains models, views, tasks, urls, utils (API client).
+- **Dependencies**: Add `requests` (or `httpx`) to requirements.txt for API calls. Use Celery for periodic syncs (already in project).
+- **Models** (in healthconnect/models.py):
+  - Extend UserProfile (core/models.py): Add fields for connection: `hc_username` (CharField), `hc_password` (encrypted, use django-fernet-fields or hash), `hc_token` (TextField), `hc_refresh` (TextField), `hc_expiry` (DateTimeField).
+  - `HealthConnectData` (abstract base or generic): `profile` (FK to UserProfile), `method` (CharField, e.g., 'steps'), `record_id` (CharField from _id), `start_time` (DateTime), `end_time` (DateTime, null=True), `data` (JSONField for raw data object), `app_source` (CharField), `fetched_at` (DateTime).
+    - Use a single generic model for flexibility (all methods in one table); subclass if needed later for queries.
+- **API Client** (healthconnect/utils.py): Class `HCGatewayClient` with methods: `login(username, password)` -> get token/refresh/expiry; `refresh_token(refresh)`; `fetch(method, query=None)` -> POST to /fetch/{method} with bearer auth; `revoke()` -> POST to /revoke; `fetch_all_methods()` -> loop over all methods, fetch recent/historical.
+- **Views/Tasks**:
+  - Views: Connect (POST credentials -> login, store tokens), Sync (fetch recent), Disconnect (revoke, clear fields).
+  - Celery Task: `sync_healthconnect_data` – For each connected profile, refresh token if expired, fetch last 24h for all methods, store records.
+- **Integration with Existing**: Update `integrations_section` component to include HC status/checks, similar to Garmin/Liftosaur.
 
-- **Update WorkoutExercise**:
-  - Add: successes (IntegerField, default=0), failures (IntegerField, default=0)  # From entry.state
-  - Add: planned_weight_value/unit, reps_scheme (from program exercise state)
+## Data Flow
+1. User clicks "CONNECT" in integrations UI -> Modal for HCGateway username/password.
+2. POST to connect view -> Client.login() -> Store tokens/expiry in Profile -> Fetch historical data (all methods, no query filter initially; handle pagination if large).
+3. Store each record in HealthConnectData (dedupe by record_id/method/profile).
+4. On "SYNC" button or daily Celery: Fetch recent data (query: {"start": {"$gte": yesterday ISO}}).
+5. "DISCONNECT": Client.revoke() -> Clear Profile fields.
+6. Data accessible via admin or future views (e.g., /health-data/ for user).
 
-- **Update Program**:
-  - Ensure data JSONField captures full program structure. Optionally add parsed models like ProgramDay, ProgramExercise if needed for querying.
+```mermaid
+flowchart TD
+    A[User Clicks CONNECT] --> B[Modal: Username/Password]
+    B --> C[POST /healthconnect/connect/]
+    C --> D[Client.login() -> Tokens]
+    D --> E[Store in UserProfile]
+    E --> F[Fetch All Methods Historical]
+    F --> G[Store Raw Data in HealthConnectData]
+    H[Daily Celery or SYNC Button] --> I[Refresh Token if Expired]
+    I --> J[Fetch Recent 24h All Methods]
+    J --> K[Store/Update Records]
+    L[DISCONNECT] --> M[Client.revoke()]
+    M --> N[Clear Profile Fields]
+```
 
-- **Migration**: After model changes, create migration (e.g., python manage.py makemigrations liftosaur).
+## Implementation Steps
+1. Create healthconnect app: `python manage.py startapp healthconnect`.
+2. Add to INSTALLED_APPS in settings.py.
+3. Define models, migrate (add to Profile via migration).
+4. Implement API client.
+5. Add views/urls for connect/sync/disconnect.
+6. Celery task in healthconnect/tasks.py, add to celerybeat-schedule.
+7. Update integrations_section: Add hc_connected check (expiry > now), modal template, JS handlers (similar to Garmin).
+8. UI: Replace APK download with connect logic; add SYNC/DISCONNECT buttons if connected.
+9. Testing: Mock API or use local Docker; verify data storage.
 
-### Import Logic
-- **Celery Task** (in liftosaur/tasks.py): def import_liftosaur_data(user_profile, json_data):
-  - Parse JSON: storage['history'] for workouts.
-  - For each history item:
-    - Create/update Workout (match by id or timestamp/user).
-    - For each entry:
-      - Get/create Exercise (from exercise.id + equipment).
-      - Create WorkoutExercise (exercise_name=exercise.id + '_' + equipment, note=notes, timestamp=entry timestamp).
-      - For each set in sets[]: Create WorkoutSet (workout_exercise, set_order=i+1, reps=set.reps, weight=set.weight, completed_reps=set.completedReps, etc., is_warmup=False).
-      - For each warmup in warmupSets[]: Create WorkoutSet (..., is_warmup=True, no RPE/amrap usually).
-    - Update UserExerciseStat from exerciseData.
-    - Create BodyMeasurement from currentBodyweight.
-    - Store programs in Program model (external_id=program.id, data=program JSON).
-  - Handle units (lb/kg), timestamps (ISO to DateTime).
-  - Error handling: Skip invalid data, log issues.
-  - Trigger: Via view (upload JSON) or admin command.
+## Potential Challenges & Mitigations
+- Large Historical Data: Fetch in batches (e.g., by date range); start with last 90 days.
+- Token Management: Auto-refresh in client; fallback to re-login if fails.
+- Data Volume: JSONField ok for now; index on profile/method/start_time; aggregates later.
+- Security: Encrypt password (use django-encrypted-fields); never log credentials.
+- Errors: Handle API failures (e.g., invalid creds) with user messages.
 
-- **View/Task Integration** (liftosaur/views.py/tasks.py):
-  - Add view for JSON upload (POST to /liftosaur/import/, parse file, call task).
-  - Async via Celery for large imports.
+This plan keeps scope focused on ingestion. Once approved, we can refine and implement in code mode.
 
-## 3. Execution Steps
-1. Update models.py with new WorkoutSet model and fields.
-2. Run makemigrations && migrate.
-3. Implement import task in tasks.py.
-4. Add import view/URL.
-5. Test with sample JSON: Create test user, run task, verify DB entries (e.g., query WorkoutSets for a workout).
-6. Edge cases: Mixed units, incomplete sets, multiple programs.
-7. Performance: For large JSON, batch creates (bulk_create).
-
-## 4. Potential Enhancements
-- Calculate derived stats (volume = sum(weight * reps per set)) in model methods.
-- Integrate with core (e.g., update UserProfile stats from imports).
-- Validation: Ensure JSON schema matches expected structure.
-
-This plan ensures full rep-level data import. Estimated effort: 2-4 hours for models/task, plus testing.
+Line count: 85 (including diagram).

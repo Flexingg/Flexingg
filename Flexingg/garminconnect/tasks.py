@@ -1,5 +1,5 @@
 from celery import shared_task
-from .utils import ensure_valid_tokens
+from .utils import configure_garmin_client, refresh_oauth2_only
 from .models import Garmin_Auth, GarminDailySteps, GarminActivity
 from core.models import UserProfile, Transaction
 from django.utils import timezone
@@ -27,33 +27,10 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
     steps_synced = 0
 
     try:
-        # Ensure tokens are valid
-        if not ensure_valid_tokens(garmin_auth):
-            logger.error(f"Token refresh failed for user {user.id}")
-            return {'success': False, 'error': 'Token refresh failed'}
-
-        # Configure client with tokens
-        oauth1_data = {
-            'oauth_token': garmin_auth.oauth_token,
-            'oauth_token_secret': garmin_auth.oauth_token_secret,
-            'mfa_token': getattr(garmin_auth, 'mfa_token', None),
-            'mfa_expiration_timestamp': getattr(garmin_auth, 'mfa_expiration_timestamp', None),
-            'domain': getattr(garmin_auth, 'domain', None),
-        }
-        oauth2_data = {
-            'scope': garmin_auth.scope,
-            'jti': garmin_auth.jti,
-            'token_type': garmin_auth.token_type,
-            'access_token': garmin_auth.access_token,
-            'refresh_token': garmin_auth.refresh_token,
-            'expires_in': garmin_auth.expires_in,
-            'expires_at': garmin_auth.expires_at,
-            'refresh_token_expires_in': getattr(garmin_auth, 'refresh_token_expires_in', None),
-            'refresh_token_expires_at': getattr(garmin_auth, 'refresh_token_expires_at', None),
-        }
-        oauth1_token = garth.auth_tokens.OAuth1Token(**oauth1_data)
-        oauth2_token = garth.auth_tokens.OAuth2Token(**oauth2_data)
-        garth.client.configure(oauth1_token=oauth1_token, oauth2_token=oauth2_token)
+        # Configure client with existing tokens
+        if not configure_garmin_client(garmin_auth):
+            logger.error(f"Failed to configure Garmin client for user {user.id}")
+            return {'success': False, 'error': 'Client configuration failed'}
 
         # Sync steps for each day in range
         local_today = timezone.localtime().date()
@@ -66,13 +43,46 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
 
                 # Fetch daily steps
                 url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
-                try:
-                    daily_steps_data = garth.client.connectapi(url)
-                except Exception as api_err:
-                    logger.warning(f"Steps API failed for {current_date}: {api_err}")
-                    # Try alternative endpoint
-                    alt_url = f"/usersummary-service/usersummary/daily/{current_date.isoformat()}"
-                    daily_steps_data = garth.client.connectapi(alt_url)
+                daily_steps_data = None
+                retry_count = 0
+                max_retries = 1
+                while retry_count <= max_retries and daily_steps_data is None:
+                    try:
+                        daily_steps_data = garth.client.connectapi(url)
+                        logger.info(f"Successfully fetched steps data for {current_date} using primary endpoint.")
+                    except GarthHTTPError as api_err:
+                        if api_err.status_code in [401, 403]:
+                            if retry_count == 0:
+                                logger.warning(f"Auth error on steps API for {current_date}, attempting refresh and retry.")
+                                if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
+                                    retry_count += 1
+                                    continue
+                                else:
+                                    logger.error(f"Token refresh failed during steps sync for {current_date}")
+                                    break
+                            else:
+                                logger.error(f"Retry failed after refresh for steps API {current_date}")
+                                break
+                        else:
+                            raise
+                    except Exception as api_err:
+                        logger.warning(f"Steps API failed for {current_date}: {api_err}")
+                        # Try alternative endpoint if primary failed and no auth retry needed
+                        if retry_count == 0:
+                            alt_url = f"/usersummary-service/usersummary/daily/{current_date.isoformat()}"
+                            try:
+                                daily_steps_data = garth.client.connectapi(alt_url)
+                                logger.info(f"Successfully fetched steps data for {current_date} using alt endpoint.")
+                            except GarthHTTPError as alt_err:
+                                if alt_err.status_code in [401, 403]:
+                                    logger.warning(f"Auth error on alt steps API for {current_date}, but refresh already attempted.")
+                                    break
+                                else:
+                                    raise
+                            except Exception as alt_err:
+                                logger.warning(f"Alt steps API failed for {current_date}: {alt_err}")
+                        break
+                    retry_count += 1 if daily_steps_data is None else 0
 
                 if daily_steps_data and len(daily_steps_data) > 0:
                     steps = daily_steps_data[0].get('totalSteps', 0)
@@ -111,33 +121,10 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
     activities_synced = 0
 
     try:
-        # Ensure tokens are valid
-        if not ensure_valid_tokens(garmin_auth):
-            logger.error(f"Token refresh failed for user {user.id}")
-            return {'success': False, 'error': 'Token refresh failed'}
-
-        # Configure client with tokens (same as steps)
-        oauth1_data = {
-            'oauth_token': garmin_auth.oauth_token,
-            'oauth_token_secret': garmin_auth.oauth_token_secret,
-            'mfa_token': getattr(garmin_auth, 'mfa_token', None),
-            'mfa_expiration_timestamp': getattr(garmin_auth, 'mfa_expiration_timestamp', None),
-            'domain': getattr(garmin_auth, 'domain', None),
-        }
-        oauth2_data = {
-            'scope': garmin_auth.scope,
-            'jti': garmin_auth.jti,
-            'token_type': garmin_auth.token_type,
-            'access_token': garmin_auth.access_token,
-            'refresh_token': garmin_auth.refresh_token,
-            'expires_in': garmin_auth.expires_in,
-            'expires_at': garmin_auth.expires_at,
-            'refresh_token_expires_in': getattr(garmin_auth, 'refresh_token_expires_in', None),
-            'refresh_token_expires_at': getattr(garmin_auth, 'refresh_token_expires_at', None),
-        }
-        oauth1_token = garth.auth_tokens.OAuth1Token(**oauth1_data)
-        oauth2_token = garth.auth_tokens.OAuth2Token(**oauth2_data)
-        garth.client.configure(oauth1_token=oauth1_token, oauth2_token=oauth2_token)
+        # Configure client with existing tokens
+        if not configure_garmin_client(garmin_auth):
+            logger.error(f"Failed to configure Garmin client for user {user.id}")
+            return {'success': False, 'error': 'Client configuration failed'}
 
         # Build URL with date filter if provided
         url = f"/activitylist-service/activities/search/activities?start=0&limit={limit}"
@@ -145,8 +132,33 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
             from_str = f"{start_date.isoformat()}T00:00:00"
             to_str = f"{end_date.isoformat()}T23:59:59"
             url += f"&startDateLocalFrom={from_str}&startDateLocalTo={to_str}"
-        # Fetch activities
-        activities = garth.client.connectapi(url)
+        # Fetch activities with retry on auth error
+        activities = None
+        retry_count = 0
+        max_retries = 1
+        while retry_count <= max_retries and activities is None:
+            try:
+                activities = garth.client.connectapi(url)
+                logger.info(f"Successfully fetched {len(activities) if activities else 0} activities for user {user.id}.")
+            except GarthHTTPError as api_err:
+                if api_err.status_code in [401, 403]:
+                    if retry_count == 0:
+                        logger.warning(f"Auth error on activities API, attempting refresh and retry.")
+                        if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
+                            retry_count += 1
+                            continue
+                        else:
+                            logger.error(f"Token refresh failed during activities sync")
+                            return {'success': False, 'error': 'Token refresh failed after auth error'}
+                    else:
+                        logger.error(f"Retry failed after refresh for activities API")
+                        return {'success': False, 'error': 'API retry failed'}
+                else:
+                    raise
+            except Exception as api_err:
+                logger.error(f"Unexpected error on activities API: {api_err}")
+                raise
+            retry_count += 1 if activities is None else 0
 
         if not activities:
             logger.info(f"No activities found for user {user.id}")

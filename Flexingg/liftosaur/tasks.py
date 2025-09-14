@@ -9,13 +9,13 @@ import json
 
 logger = logging.getLogger(__name__)
 
-def liftosaur_download(liftosaur_id):
+def liftosaur_download(liftosaur_id, session_token):
     """
     Fetches the latest workout data from the Liftosaur API for a given user ID.
     """
     import requests
     url = f'https://api3.liftosaur.com/api/storage?tempuserid={liftosaur_id}'
-    headers = {'Cookie': 'session=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJwenppeGtkcnR1IiwiaWF0IjoxNzAwODczMjkxfQ.0z8ujfBvOL7ZJ6D9qFD9rnd5I31e9FvYNloWMc70iv4'}
+    headers = {'Cookie': f'session={session_token}'}
     
     try:
         r = requests.get(url, headers=headers, timeout=10)
@@ -59,7 +59,7 @@ def parse_weight(weight_dict):
         return weight_dict['value'], weight_dict.get('unit', 'lb')
     return 0, 'lb'
 
-def _process_liftosaur_data(user_id, data_input):
+def _process_liftosaur_data(user_id, data_input, session_token=None):
     """
     Internal function to process Liftosaur data (dict) into DB.
     """
@@ -93,7 +93,7 @@ def _process_liftosaur_data(user_id, data_input):
     storage = data.get('storage', {})
     logger.info(f"Storage keys for user {user_id}: {list(storage.keys()) if isinstance(storage, dict) else 'Not dict'}")
        
-
+ 
     storage = data.get('storage', {})
     stats = {
         '1rms': 0, 'body_measurements': 0, 'workouts': 0, 'workout_exercises': 0, 'workout_sets': 0,
@@ -248,7 +248,7 @@ def _process_liftosaur_data(user_id, data_input):
 
 
 @shared_task
-def sync_liftosaur_data(user_id, data):
+def sync_liftosaur_data(user_id, data, session_token=None):
     """
     Process already-fetched Liftosaur data for the user asynchronously.
     """
@@ -256,4 +256,4 @@ def sync_liftosaur_data(user_id, data):
         logger.error(f"No data provided for user_id: {user_id}")
         return {'status': 'error', 'message': 'No data to process'}
 
-    return _process_liftosaur_data(user_id, data)
+    return _process_liftosaur_data(user_id, data, session_token)

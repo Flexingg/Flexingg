@@ -13,6 +13,7 @@ from django.views import View
 from .models import SweatScoreWeights, UserProfile, Friendship
 from django.contrib import messages
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
+from liftosaur.models import Workout
 from .models import *  # JWT, Notification, Relationship
 from django.contrib.staticfiles.finders import find
 from django.http import HttpResponse
@@ -80,12 +81,19 @@ class HomeView(TemplateView):
             ).aggregate(total=Sum('steps'))['total'] or 0
             context['todays_steps'] = todays_steps
 
-            context['todays_lifting_calories'] = 0
+            # Calculate today's lifting volume
+            total_volume = 0
+            workouts = Workout.objects.filter(user=self.request.user, timestamp__date=today)
+            for workout in workouts:
+                for exercise in workout.exercises.all():
+                    total_volume += exercise.get_volume(unit='lb')
+            todays_lifting_volume_k = round(total_volume / 1000) if total_volume > 0 else 0
+            context['todays_lifting_volume_k'] = todays_lifting_volume_k
 
         else:
             context['todays_total_calories'] = 0
             context['todays_steps'] = 0
-            context['todays_lifting_calories'] = 0
+            context['todays_lifting_volume_k'] = 0
 
         return context
 
@@ -232,6 +240,7 @@ class GymView(TemplateView):
 
 class LockerRoomView(TemplateView):
     template_name = 'locker_room.html'
+
 
 class ShopView(TemplateView):
     template_name = 'shop.html'

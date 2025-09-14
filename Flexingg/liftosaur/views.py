@@ -26,129 +26,26 @@ def convert_timestamp_to_datetime(ts):
 def sync_workout_data(request):
     """
     Triggers asynchronous sync of Liftosaur data for the logged-in user.
-    Fetches from API using liftosaur_id, then processes.
+    Fetches from API using liftosaur_id and session_token if available, then processes.
     """
     user = request.user
     liftosaur_id = user.liftosaur_user_id
     if not liftosaur_id:
         return JsonResponse({'status': 'error', 'message': 'Liftosaur User ID not configured for this user.'}, status=400)
 
-    data = liftosaur_download(liftosaur_id)
+    session_token = user.liftosaur_session_token
+    data = liftosaur_download(liftosaur_id, session_token)
     if not data:
         return JsonResponse({'status': 'error', 'message': 'Failed to fetch data from API'}, status=400)
 
-    task = sync_liftosaur_data.delay(user.id, data)
+    task = sync_liftosaur_data.delay(user.id, data, session_token)
     
     return JsonResponse({
         'status': 'success',
         'message': 'Sync initiated asynchronously.',
         'task_id': task.id
     })
-@login_required
-@require_POST
-def store_body_measurement(request):
-    """
-    Reads bodyweight from the reference Liftosaur JSON and stores it as a BodyMeasurement
-    for the current user.
-    """
-    json_path = r'REFERENCE\ ONLY/liftosaur_data\ (small).json'
-    try:
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-        
-        settings = data.get('storage', {}).get('settings', {})
-        bodyweight_data = settings.get('currentBodyweight', {})
-        
-        if not bodyweight_data:
-            return JsonResponse({'status': 'error', 'message': 'No bodyweight data found in JSON'}, status=400)
-        
-        value = bodyweight_data.get('value')
-        unit = bodyweight_data.get('unit')
-        
-        if value is None or unit is None:
-            return JsonResponse({'status': 'error', 'message': 'Invalid bodyweight data'}, status=400)
-        
-        user_profile = request.user.userprofile
-        measurement_type = 'bodyweight'
-        timestamp = datetime.now()
-        
-        BodyMeasurement.objects.update_or_create(
-            user=user_profile,
-            measurement_type=measurement_type,
-            defaults={
-                'value': value,
-                'unit': unit,
-                'timestamp': timestamp
-            }
-        )
-        
-        return JsonResponse({
-            'status': 'success',
-            'message': f'Stored bodyweight: {value} {unit}'
-        })
-    
-    except FileNotFoundError:
-        return JsonResponse({'status': 'error', 'message': 'JSON file not found'}, status=404)
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-
-@login_required
-@require_POST
-def store_programs(request):
-    """
-    Reads programs from the reference Liftosaur JSON and stores them as Program
-    instances for the current user.
-    """
-    json_path = r'REFERENCE\ ONLY/liftosaur_data\ (small).json'
-    try:
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-        
-        programs_data = data.get('storage', {}).get('programs', [])
-        
-        if not programs_data:
-            return JsonResponse({'status': 'error', 'message': 'No programs data found in JSON'}, status=400)
-        
-        user_profile = request.user.userprofile
-        
-        created_count = 0
-        updated_count = 0
-        
-        for prog in programs_data:
-            external_id = prog.get('id')
-            if not external_id:
-                continue
-            
-            name = prog.get('name', 'Unknown Program')
-            
-            obj, created = Program.objects.update_or_create(
-                user=user_profile,
-                external_id=external_id,
-                defaults={
-                    'name': name,
-                    'data': prog
-                }
-            )
-            
-            if created:
-                created_count += 1
-            else:
-                updated_count += 1
-        
-        return JsonResponse({
-            'status': 'success',
-            'message': f'Stored/Updated {len(programs_data)} programs (created: {created_count}, updated: {updated_count})'
-        })
-    
-    except FileNotFoundError:
-        return JsonResponse({'status': 'error', 'message': 'JSON file not found'}, status=404)
-    except json.JSONDecodeError:
-        return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
 
@@ -186,3 +83,30 @@ def import_data(request):
     except Exception as e:
         logger.error(f"Import error for user {request.user.id}: {e}")
         return JsonResponse({'status': 'error', 'message': 'Import failed'}, status=500)
+    
+@login_required
+def SaveLiftosaurTokenView(request):
+    token = request.POST.get('liftosaur_session_token')
+    if not token:
+        return JsonResponse({'status': 'error', 'message': 'No token provided'})
+    
+    try:
+        request.user.liftosaur_session_token = token
+        request.user.save()
+    
+        s = requests.Session()
+        s.cookies.set('session', token, domain='liftosaur.com')
+        r = s.get('https://api3.liftosaur.com/api/storage')
+        if r.ok:
+            data = r.json()
+            user_id = data.get('user_id') or data.get('id')
+            if user_id:
+                request.user.liftosaur_user_id = str(user_id)
+                request.user.save()
+                return JsonResponse({'status': 'success', 'message': 'Token saved and Liftosaur connected successfully!'})
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Token valid but could not fetch user ID'})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Invalid token or API error'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})

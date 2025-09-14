@@ -6,6 +6,21 @@ from django.db.models import Q
 from .models import Friendship, Group, GroupMembership
 from django import forms
 
+def calculate_lift_volume(user, since_date):
+    """
+    Calculate total volume lifted (in lbs) for the user since the given date.
+    Sums completed set volumes across all exercises and workouts.
+    """
+    from liftosaur.models import Workout, WorkoutExercise, WorkoutSet
+    total = 0.0
+    workouts = user.workouts.filter(timestamp__date__gte=since_date)
+    for workout in workouts:
+        for exercise in workout.exercises.all():
+            for set_instance in exercise.sets.all():
+                if set_instance.completed_reps > 0:
+                    total += set_instance.get_set_volume('lb')
+    return total
+
 class GroupForm(forms.ModelForm):
     class Meta:
         model = Group
@@ -164,6 +179,7 @@ def social_main(request):
     from core.models import Transaction
     from datetime import timedelta, date
     from django.utils import timezone
+    from django.db.models import FloatField
 
     current_category = request.GET.get('category', 'steps')
     current_history = request.GET.get('history', 'All Time')
@@ -200,7 +216,7 @@ def social_main(request):
 
     available_metrics = {
         'steps': {'field': Sum('garmin_daily_steps__steps', filter=Q(garmin_daily_steps__date__gte=cutoff)), 'label': 'Steps', 'default': 0, 'output_field': IntegerField()},
-        'lifts': {'field': Value(0), 'label': 'Lifts', 'default': 0, 'output_field': IntegerField()},
+        'lifts': {'field': Value(0), 'label': 'Volume Lifted', 'default': 0.0, 'output_field': FloatField()},
         'calories': {'field': Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__date__gte=cutoff)), 'label': 'Calories Burned', 'default': 0.0, 'output_field': FloatField()},
         'coins': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='cardio_coins', transactions__created_at__date__gte=cutoff)), 'label': 'Coins', 'default': 0.0, 'output_field': DecimalField()},
         'gems': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='gym_gems', transactions__created_at__date__gte=cutoff)), 'label': 'Gems', 'default': 0.0, 'output_field': DecimalField()},
@@ -214,35 +230,68 @@ def social_main(request):
 
     info = available_metrics[current_category]
 
-    # Annotate once
-    annotated_users = users.annotate(
-        metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
-    ).order_by('-metric_value')
+    if current_category == 'lifts':
+        # Annotate with placeholder for consistency, but override with computation
+        annotated_users = users.annotate(
+            metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
+        )
+        volumes = {u.id: calculate_lift_volume(u, cutoff) for u in users}
+        sorted_users = sorted(annotated_users, key=lambda u: volumes.get(u.id, 0), reverse=True)
 
-    # Top 5 for podium
-    users_query = annotated_users[:5]
-    users = [
-        {
-            'rank': i + 1,
-            'name': u.username,
-            'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
-            'avatar': u.avatar.url if u.avatar else None
-        }
-        for i, u in enumerate(users_query)
-    ]
+        # Top 5 for podium
+        users_query = sorted_users[:5]
+        users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': volumes[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(users_query)
+        ]
 
-    # Top 10 for list
-    list_users_query = annotated_users[:10]
-    list_users = [
-        {
-            'rank': i + 1,
-            'name': u.username,
-            'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
-            'avatar': u.avatar.url if u.avatar else None
-        }
-        for i, u in enumerate(list_users_query)
-    ]
-    list_users = list_users[3:] if len(list_users) > 3 else []
+        # Top 10 for list
+        list_users_query = sorted_users[:10]
+        list_users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': volumes[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(list_users_query)
+        ]
+        list_users = list_users[3:] if len(list_users) > 3 else []
+    else:
+        # Annotate once
+        annotated_users = users.annotate(
+            metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
+        ).order_by('-metric_value')
+
+        # Top 5 for podium
+        users_query = annotated_users[:5]
+        users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(users_query)
+        ]
+
+        # Top 10 for list
+        list_users_query = annotated_users[:10]
+        list_users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': float(u.metric_value) if u.metric_value is not None else float(info['default']),
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(list_users_query)
+        ]
+        list_users = list_users[3:] if len(list_users) > 3 else []
 
     # Pass user groups for group selection
     user_groups = list(request.user.member_groups.values('id', 'name')) if current_scope == 'group' and not group_id else []
