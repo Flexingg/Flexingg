@@ -171,10 +171,10 @@ def import_data(request):
     try:
         json_data_str = json_file.read().decode('utf-8')
         logger.info(f"File size for user {request.user.id}: {len(json_data_str)} characters")
-        task = import_liftosaur_json.delay(request.user.id, json_data_str)
+        task = sync_liftosaur_data.delay(request.user.id, json_data_str)
         return JsonResponse({
             'status': 'success',
-        'task_id': task.id,
+            'task_id': task.id,
             'message': 'Import started asynchronously. Check Celery logs for progress.'
         })
     except UnicodeDecodeError as e:

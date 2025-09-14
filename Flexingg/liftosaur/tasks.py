@@ -239,6 +239,11 @@ def _process_liftosaur_data(user_id, data_input):
                 stats['programs'] += 1
 
     logger.info(f"Import completed for user {user.username} with stats: {stats}")
+    user_id = data.get('user_id')
+    if user_id:
+        user.liftosaur_user_id = user_id
+        user.save(update_fields=['liftosaur_user_id'])
+        logger.info(f"Set Liftosaur user_id for user {user.username}: {user_id}")
     return {'status': 'success', 'stats': stats}
 
 

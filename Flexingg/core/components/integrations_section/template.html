@@ -75,12 +75,17 @@
 <div id="liftosaur-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
         <h3 class="font-pixel text-lg text-white mb-4">Connect Liftosaur</h3>
-        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your Liftosaur User ID to connect.</p>
-        <form method="post" action="{% url 'fitness:connect_liftosaur' %}" class="w-full h-full">
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            1. Go to <a href="https://www.liftosaur.com/app/" class="text-cyan-300 underline">https://www.liftosaur.com/app/</a><br>
+            2. Select "Me" (bottom right corner)<br>
+            3. Select "Export data to JSON file"<br>
+            4. Upload the JSON file below
+        </p>
+        <form id="liftosaur-import-form" method="post" action="{% url 'liftosaur:import_data' %}" enctype="multipart/form-data" class="w-full h-full">
             {% csrf_token %}
             <div class="mb-4">
-                <label class="font-pixel text-sm text-white block mb-1">Liftosaur User ID</label>
-                <input type="text" name="liftosaur_user_id" required class="pixel-input w-full" placeholder="Your Liftosaur User ID"/>
+                <label class="font-pixel text-sm text-white block mb-1">Upload JSON File</label>
+                <input type="file" name="file" accept=".json" required class="pixel-input w-full"/>
             </div>
             <div class="flex justify-end space-x-2">
                 <button type="button" onclick="toggleLiftosaurModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
@@ -135,6 +140,40 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         console.log('Liftosaur sync form not found');
+    }
+
+    // Handle Liftosaur import with AJAX to avoid page refresh
+    const importForm = document.getElementById('liftosaur-import-form');
+    if (importForm) {
+        importForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('Liftosaur import form submitted via AJAX');
+            const formData = new FormData(importForm);
+            fetch('/liftosaur/import/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Import response:', data);
+                if (data.status === 'success') {
+                    alert('Import successful! Liftosaur connected.');
+                    toggleLiftosaurModal();
+                    location.reload(); // Reload to update connected status
+                } else {
+                    alert('Import failed: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Import error:', error);
+                alert('Import error occurred.');
+            });
+        });
+    } else {
+        console.log('Liftosaur import form not found');
     }
 
     // Modal toggle function for Liftosaur
