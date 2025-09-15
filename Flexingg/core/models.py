@@ -29,6 +29,13 @@ class UserProfile(AbstractUser):
     liftosaur_user_id = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur user ID for integration")
     liftosaur_session_token = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur session token for API access")
 
+    # Health Connect integration fields
+    hc_username = models.CharField(max_length=255, blank=True, null=True, help_text="HCGateway username")
+    hc_password = models.CharField(max_length=255, blank=True, null=True, help_text="HCGateway password (hashed)")
+    hc_token = models.TextField(blank=True, null=True, help_text="HCGateway access token")
+    hc_refresh_token = models.TextField(blank=True, null=True, help_text="HCGateway refresh token")
+    hc_token_expiry = models.DateTimeField(null=True, blank=True, help_text="Token expiry time")
+
     groups = models.ManyToManyField(
         'auth.Group',
         related_name='profile_groups', blank=True,

@@ -42,13 +42,76 @@
     </div>
     <div class="flex items-center justify-between">
         <span class="font-pixel text-sm text-white">Health Connect</span>
-        <a id="health-connect-btn" href="https://github.com/Flexingg/Flexingg-Sync/releases/download/latest/flexingg-sync.apk" download="flexingg-sync.apk" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</a>
+        {% if hc_connected %}
+        <div class="flex space-x-2">
+            <form method="post" action="{% url 'healthconnect:sync' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">SYNC</button>
+            </form>
+            <form method="post" action="{% url 'healthconnect:disconnect' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+        </div>
+        {% else %}
+        <button id="health-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+        {% endif %}
     </div>
     <div class="flex items-center justify-between">
         <span class="font-pixel text-sm text-white">Apple Health</span>
         <button class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500 opacity-50 cursor-not-allowed">COMING SOON</button>
     </div>
 </div>
+
+<!-- Health Connect Modal only shown if not connected -->
+{% if not hc_connected %}
+<div id="hc-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Connect Health Connect</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your HCGateway credentials to connect your Health Connect data.</p>
+        <form method="post" action="{% url 'healthconnect:connect' %}" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Username</label>
+                <input type="text" name="hc_username" required class="pixel-input w-full" placeholder="HCGateway username"/>
+            </div>
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Password</label>
+                <input type="password" name="hc_password" required class="pixel-input w-full" placeholder="Password"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="toggleHCModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Health Connect Modal only shown if not connected -->
+{% if not hc_connected %}
+<div id="hc-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Connect Health Connect</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your HCGateway credentials to connect your Health Connect data.</p>
+        <form method="post" action="{% url 'healthconnect:connect' %}" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Username</label>
+                <input type="text" name="hc_username" required class="pixel-input w-full" placeholder="HCGateway username"/>
+            </div>
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Password</label>
+                <input type="password" name="hc_password" required class="pixel-input w-full" placeholder="Password"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="toggleHCModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 <!-- Modal only shown if not connected -->
 {% if not garmin_connected %}
@@ -307,6 +370,134 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         console.log('Advanced modal not found on DOM load');
+    }
+
+    // Health Connect button handler (inline to ensure load)
+    const healthConnectBtn = document.getElementById('health-connect-btn');
+    console.log('Inline Health Connect button:', healthConnectBtn);
+    if (healthConnectBtn) {
+        healthConnectBtn.addEventListener('click', function() {
+            console.log('Inline Health Connect button clicked');
+            toggleHCModal();
+        });
+    } else {
+        console.log('Inline Health Connect button not found');
+    }
+
+    // Health Connect modal toggle
+    window.toggleHCModal = function() {
+        console.log('toggleHCModal called');
+        const modal = document.getElementById('hc-modal');
+        if (modal) {
+            modal.classList.toggle('hidden');
+        } else {
+            console.log('HC modal not found');
+        }
+    };
+
+    // Close HC modal when clicking outside
+    const hcModal = document.getElementById('hc-modal');
+    if (hcModal) {
+        hcModal.addEventListener('click', function(e) {
+            if (e.target === hcModal) {
+                hcModal.classList.add('hidden');
+            }
+        });
+    }
+
+    // Handle HC connect with AJAX
+    const hcForm = document.querySelector('form[action*="healthconnect/connect/"]');
+    if (hcForm) {
+        hcForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('HC connect form submitted via AJAX');
+            const formData = new FormData(hcForm);
+            fetch(hcForm.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('HC connect response:', data);
+                if (data.status === 'success') {
+                    alert('Health Connect connected successfully!');
+                    toggleHCModal();
+                    location.reload();
+                } else {
+                    alert('Connection failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('HC connect error:', error);
+                alert('Connection error occurred.');
+            });
+        });
+    }
+
+    // Handle HC sync with AJAX
+    const hcSyncForm = document.querySelector('form[action*="healthconnect/sync/"]');
+    if (hcSyncForm) {
+        hcSyncForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('HC sync form submitted via AJAX');
+            const formData = new FormData(hcSyncForm);
+            fetch(hcSyncForm.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('HC sync response:', data);
+                if (data.status === 'success') {
+                    alert('Sync successful!');
+                } else {
+                    alert('Sync failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('HC sync error:', error);
+                alert('Sync error occurred.');
+            });
+        });
+    }
+
+    // Handle HC disconnect with AJAX
+    const hcDisconnectForm = document.querySelector('form[action*="healthconnect/disconnect/"]');
+    if (hcDisconnectForm) {
+        hcDisconnectForm.addEventListener('submit', function(e) {
+            if (confirm('Are you sure you want to disconnect Health Connect?')) {
+                const formData = new FormData(hcDisconnectForm);
+                fetch(hcDisconnectForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('HC disconnect response:', data);
+                    if (data.status === 'success') {
+                        alert('Disconnected successfully.');
+                        location.reload();
+                    } else {
+                        alert('Disconnect failed: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('HC disconnect error:', error);
+                    alert('Disconnect error occurred.');
+                });
+            } else {
+                e.preventDefault();
+            }
+        });
     }
 });
 </script>

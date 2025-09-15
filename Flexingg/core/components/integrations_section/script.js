@@ -19,13 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (healthConnectBtn) {
         healthConnectBtn.addEventListener('click', function() {
             console.log('Health Connect button clicked');
-            const link = document.createElement('a');
-            link.href = '/fitness/download-hc-apk/';
-            link.download = 'hc_gateway.apk';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            console.log('APK download triggered via dedicated URL');
+            toggleHCModal();
         });
     } else {
         console.log('Health Connect button not found');
@@ -56,5 +50,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     } else {
         console.log('Modal not found on DOM load');
+    }
+
+    // Health Connect modal toggle
+    window.toggleHCModal = function() {
+        console.log('toggleHCModal called');
+        const modal = document.getElementById('hc-modal');
+        if (modal) {
+            modal.classList.toggle('hidden');
+        } else {
+            console.log('HC modal not found');
+        }
+    };
+
+    // Close HC modal when clicking outside
+    const hcModal = document.getElementById('hc-modal');
+    if (hcModal) {
+        hcModal.addEventListener('click', function(e) {
+            if (e.target === hcModal) {
+                hcModal.classList.add('hidden');
+            }
+        });
     }
 });
