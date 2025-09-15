@@ -3,6 +3,7 @@
 .env.local
 .env.*
 *.env
+stack.env
 
 # Python
 __pycache__/

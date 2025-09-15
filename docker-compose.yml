@@ -3,10 +3,8 @@ services:
     image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=flexingg_db
-      - POSTGRES_USER=flexingg_user
-      - POSTGRES_PASSWORD=flexingg_pass
+    env_file:
+      - stack.env
     ports:
       - "5432:5432"
 
@@ -22,15 +20,8 @@ services:
       - ./media:/app/Flexingg/media
     ports:
       - "1234:8000"
-    environment:
-      - DB_NAME=flexingg_db
-      - DB_USER=flexingg_user
-      - DB_PASSWORD=flexingg_pass
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DEBUG=True
-    depends_on:
-      - db
+    env_file:
+      - stack.env
 
   redis:
     image: redis:alpine
@@ -44,13 +35,8 @@ services:
              celery -A celery_app worker -l info"
     volumes:
       - .:/app
-    environment:
-      - DB_NAME=flexingg_db
-      - DB_USER=flexingg_user
-      - DB_PASSWORD=flexingg_pass
-      - DB_HOST=db
-      - DB_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
+    env_file:
+      - stack.env
     depends_on:
       - db
       - redis
@@ -62,13 +48,8 @@ services:
              celery -A celery_app beat -l info"
     volumes:
       - .:/app
-    environment:
-      - DB_NAME=flexingg_db
-      - DB_USER=flexingg_user
-      - DB_PASSWORD=flexingg_pass
-      - DB_HOST=db
-      - DB_PORT=5432
-      - CELERY_BROKER_URL=redis://redis:6379/0
+    env_file:
+      - stack.env
     depends_on:
       - db
       - redis
