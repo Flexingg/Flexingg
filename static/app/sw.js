@@ -66,8 +66,11 @@ self.addEventListener('activate', event => {
 
 // Fetch event - network first with cache fallback
 self.addEventListener('fetch', event => {
-    // Bypass service worker for non-GET requests (e.g., POST for AJAX)
-    if (event.request.method !== 'GET') {
+    // Bypass service worker for non-GET requests, AJAX (e.g., POST, XHR), and API endpoints
+    const url = new URL(event.request.url);
+    const isAjax = event.request.headers.has('X-Requested-With') || event.request.mode === 'cors' || event.request.destination === 'empty';
+    const isApi = url.pathname.startsWith('/healthconnect/') || url.pathname.startsWith('/garminconnect/') || url.pathname.startsWith('/liftosaur/');
+    if (event.request.method !== 'GET' || isAjax || isApi) {
         event.respondWith(fetch(event.request));
         return;
     }
@@ -132,7 +135,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         fetch(event.request)
             .then(response => {
-                if (response && response.status === 200) {
+                if (response && response.status === 200 && !isAjax && !isApi) {
                     const responseToCache = response.clone();
                     caches.open(CACHE_NAME).then(cache => {
                         cache.put(event.request, responseToCache);

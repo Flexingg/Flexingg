@@ -35,6 +35,7 @@ class UserProfile(AbstractUser):
     hc_token = models.TextField(blank=True, null=True, help_text="HCGateway access token")
     hc_refresh_token = models.TextField(blank=True, null=True, help_text="HCGateway refresh token")
     hc_token_expiry = models.DateTimeField(null=True, blank=True, help_text="Token expiry time")
+    hc_last_sync = models.DateTimeField(null=True, blank=True, help_text="Last Health Connect sync time")
 
     groups = models.ManyToManyField(
         'auth.Group',

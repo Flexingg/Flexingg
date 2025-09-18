@@ -454,10 +454,10 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 console.log('HC sync response:', data);
-                if (data.status === 'success') {
-                    alert('Sync successful!');
+                if (data.success) {
+                    alert('Sync successful! Saved ' + data.saved + ' records.');
                 } else {
-                    alert('Sync failed: ' + data.message);
+                    alert('Sync failed: ' + (data.error || data.message));
                 }
             })
             .catch(error => {

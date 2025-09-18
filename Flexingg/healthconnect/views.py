@@ -16,11 +16,15 @@ def connect_healthconnect(request):
     """
     Connect to Health Connect Gateway.
     Expects POST with hc_username and hc_password.
+    Supports AJAX requests with JSON response.
     """
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
         username = request.POST.get('hc_username')
         password = request.POST.get('hc_password')
         if not username or not password:
+            if is_ajax:
+                return JsonResponse({'status': 'error', 'message': 'Username and password are required.'}, status=400)
             messages.error(request, 'Username and password are required.')
             return redirect('fitness:settings')
 
@@ -38,12 +42,21 @@ def connect_healthconnect(request):
             if not is_aware(expiry):
                 expiry = make_aware(expiry)
             profile.hc_token_expiry = expiry
+            profile.hc_last_sync = None  # Reset last sync on new connection
             profile.save()
+            if is_ajax:
+                return JsonResponse({'status': 'success', 'message': 'Successfully connected to Health Connect.'})
             messages.success(request, 'Successfully connected to Health Connect.')
         except Exception as e:
-            messages.error(request, f'Connection failed: {str(e)}')
+            error_msg = f'Connection failed: {str(e)}'
+            if is_ajax:
+                return JsonResponse({'status': 'error', 'message': error_msg}, status=500)
+            messages.error(request, error_msg)
             client.revoke()  # Clean up if partial
-        return redirect('fitness:settings')
+        if not is_ajax:
+            return redirect('fitness:settings')
+    if is_ajax:
+        return JsonResponse({'status': 'error', 'message': 'Invalid request method.'}, status=405)
     return render(request, 'healthconnect/connect.html')  # Or redirect if GET
 
 
@@ -110,7 +123,9 @@ def sync_healthconnect(request):
 def disconnect_healthconnect(request):
     """
     Disconnect from Health Connect Gateway.
+    Supports AJAX requests with JSON response.
     """
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     profile = request.user
     if profile.hc_username:
         client = HCGatewayClient()
@@ -128,11 +143,19 @@ def disconnect_healthconnect(request):
         profile.hc_token = None
         profile.hc_refresh_token = None
         profile.hc_token_expiry = None
+        profile.hc_last_sync = None
         profile.save()
         # Optionally delete local data
         # profile.health_data.all().delete()
+        if is_ajax:
+            return JsonResponse({'status': 'success', 'message': 'Disconnected from Health Connect.'})
         messages.success(request, 'Disconnected from Health Connect.')
-    return redirect('fitness:settings')
+    else:
+        if is_ajax:
+            return JsonResponse({'status': 'error', 'message': 'Not connected to Health Connect.'}, status=400)
+    if not is_ajax:
+        return redirect('fitness:settings')
+    return JsonResponse({'status': 'error', 'message': 'Invalid request.'}, status=405)
 
 
 # Placeholder for render views if needed
