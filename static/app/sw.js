@@ -10,18 +10,15 @@ function log(...args) {
     }
 }
 
+const VERSION = '1.0.2';
 // Assets that need to be available offline
 const ASSETS_TO_CACHE = [
     '/',
     '/offline.html',
-    '/?source=pwa',
     '/manifest.json',
-    '/static/manifest.json',
-    '/static/icons/icon.png',
-    '/static/icons/shortcuts/read_icon.png',
-    '/static/icons/shortcuts/pray_icon.png',
-    '/static/screenshots/home.png',
-    '/static/css/styles.css',
+    '/static/app/manifest.json',
+    '/static/app/favicon.ico',
+    '/static/app/sw.js',
     'https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js',
     'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
@@ -41,6 +38,9 @@ self.addEventListener('install', event => {
                 log('Error caching static assets:', error);
             })
     );
+
+    // Force activation of new SW
+    self.skipWaiting();
 });
 
 // Activate event - clean up old caches
@@ -66,6 +66,11 @@ self.addEventListener('activate', event => {
 
 // Fetch event - network first with cache fallback
 self.addEventListener('fetch', event => {
+    // Bypass service worker for non-GET requests (e.g., POST for AJAX)
+    if (event.request.method !== 'GET') {
+        event.respondWith(fetch(event.request));
+        return;
+    }
     
     // Handle navigation requests
     if (event.request.mode === 'navigate') {
@@ -123,7 +128,7 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // Default fetch behavior
+    // Default fetch behavior for remaining GET requests
     event.respondWith(
         fetch(event.request)
             .then(response => {

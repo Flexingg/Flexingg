@@ -15,6 +15,8 @@ from django.contrib import messages
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
 from liftosaur.models import Workout
 from .models import *  # JWT, Notification, Relationship
+from healthconnect.utils import get_daily_consumed_calories
+from healthconnect.tasks import healthconnect_sync_task
 from django.contrib.staticfiles.finders import find
 from django.http import HttpResponse
 from django.contrib.auth.models import User
@@ -66,6 +68,16 @@ class HomeView(TemplateView):
         
                     # Set user for sync progress indicator
                     context['sync_user_id'] = profile.id
+
+                    # Health Connect sync debounce logic
+                    if profile.hc_username:
+                        debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
+                        threshold = timezone.now() - timedelta(minutes=debounce_minutes)
+                        if profile.hc_last_sync is None or profile.hc_last_sync < threshold:
+                            # Trigger async sync
+                            healthconnect_sync_task.delay(profile.id)
+                            context['hc_sync_triggered'] = True
+                            logger.info(f"Triggered Health Connect sync for profile {profile.id}")
         
             # Calculate today's total calories from the current user's Garmin activities
             today = timezone.localtime().date()
@@ -90,10 +102,15 @@ class HomeView(TemplateView):
             todays_lifting_volume_k = round(total_volume / 1000) if total_volume > 0 else 0
             context['todays_lifting_volume_k'] = todays_lifting_volume_k
 
+            # Calculate today's consumed calories from Health Connect nutrition
+            todays_consumed_calories = get_daily_consumed_calories(profile)
+            context['todays_consumed_calories'] = todays_consumed_calories
+
         else:
             context['todays_total_calories'] = 0
             context['todays_steps'] = 0
             context['todays_lifting_volume_k'] = 0
+            context['todays_consumed_calories'] = 0
 
         return context
 

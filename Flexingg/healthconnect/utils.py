@@ -2,6 +2,7 @@ import requests
 from datetime import datetime, timedelta
 from django.utils import timezone
 import json
+import os
 
 
 class HCGatewayClient:
@@ -14,8 +15,10 @@ class HCGatewayClient:
         'speed', 'steps', 'stepsCadence', 'totalCaloriesBurned', 'vo2Max', 'weight', 'wheelchairPushes'
     ]
 
-    def __init__(self, base_url='http://localhost:6644/api/v2'):
-        self.base_url = base_url
+
+    def __init__(self):
+        base_url = os.environ.get('HC_CONNECT_URL', 'http://localhost:6644')
+        self.base_url = base_url + '/api/v2'
         self.session = requests.Session()
         self.token = None
         self.refresh_token = None
@@ -138,3 +141,61 @@ class HCGatewayClient:
         """
         start_date = timezone.now() - timedelta(hours=hours)
         return self.fetch_all_methods(start_date)
+
+    def delete(self, method, uuids):
+        """
+        Request deletion for records of a specific method.
+        uuids: string or list of uuids to delete.
+        Returns: dict with success and message.
+        """
+        if method not in self.METHODS:
+            raise ValueError(f"Invalid method: {method}")
+        self._ensure_auth()
+        if isinstance(uuids, str):
+            uuids = [uuids]
+        url = f"{self.base_url}/delete/{method}"
+        headers = self._get_headers()
+        data = {"uuid": uuids}
+        response = self.session.delete(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+from .models import HealthConnectData
+from django.utils import timezone
+from decimal import Decimal
+
+
+def get_daily_consumed_calories(profile, date_obj=None):
+    """
+    Compute total consumed calories (kcal) for a given day from nutrition records.
+    
+    Args:
+        profile: UserProfile instance
+        date_obj: date object for the day; defaults to today in local time
+    
+    Returns:
+        int: Total kcal, rounded to nearest integer, or 0 if no data
+    """
+    if date_obj is None:
+        today = timezone.localtime().date()
+    else:
+        today = date_obj
+    
+    records = HealthConnectData.objects.filter(
+        profile=profile,
+        method='nutrition',
+        start_time__date=today
+    )
+    
+    total = Decimal('0')
+    for record in records:
+        data = record.data
+        if isinstance(data, dict) and 'energy' in data:
+            energy = data['energy']
+            if isinstance(energy, dict) and 'inKilocalories' in energy:
+                try:
+                    kcal = Decimal(str(energy['inKilocalories']))
+                    total += kcal
+                except (ValueError, TypeError, InvalidOperation):
+                    pass  # Skip invalid values
+    
+    return int(total.quantize(Decimal('1')))
