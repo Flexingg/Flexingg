@@ -12,14 +12,8 @@ services:
   web:
     build: .
     container_name: flexingg_web
-    command: >
-      bash -c "
-        echo 'Checking manage.py location...' &&
-        ls -la /app/Flexingg/manage.py &&
-        python /app/Flexingg/manage.py makemigrations &&
-        python /app/Flexingg/manage.py migrate &&
-        gunicorn --bind 0.0.0.0:8000 --reload /app/Flexingg/Flexingg/wsgi:application
-      "
+    command: gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
     volumes:
       - .:/app
       - ./media:/app/Flexingg/media
@@ -49,12 +43,8 @@ services:
   celery:
     build: .
     container_name: flexingg_celery_worker
-    command: >
-      bash -c "
-        echo 'Testing celery import...' &&
-        python -c 'from flexingg import app; print(\"Celery app loaded\")' &&
-        celery -A flexingg worker -l info
-      "
+    command: celery -A flexingg worker -l info
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
     volumes:
       - .:/app
     env_file:
@@ -69,12 +59,8 @@ services:
   celery-beat:
     build: .
     container_name: flexingg_celery_beat
-    command: >
-      bash -c "
-        echo 'Testing celery import...' &&
-        python -c 'from flexingg import app; print(\"Celery app loaded\")' &&
-        celery -A flexingg beat -l info
-      "
+    command: celery -A flexingg beat -l info
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
     volumes:
       - .:/app
     env_file:
