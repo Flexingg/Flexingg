@@ -4,6 +4,7 @@ Welcome to the comprehensive documentation for the Flexingg fitness PWA project.
 
 ## Project Overview
 - [Overview](overview.md): High-level project structure, purpose, architecture, and key directories.
+- [Future Roadmap](future-roadmap.md): Outlines the future plans for the app, including new features and gameplay mechanics.
 
 ## Root Files
 - [Root Files](root-files.md): Documentation of manage.py, asgi.py, wsgi.py, docker-compose.yml, Dockerfile, requirements.txt, .gitignore, LICENSE, README.md.
@@ -37,7 +38,13 @@ Welcome to the comprehensive documentation for the Flexingg fitness PWA project.
 - [Components](core/components.md): Reusable UI components grouped by category (UI Basics, Charts, Social/Shop, Navigation/Settings, Other).
 
 ### Migrations
-- [Migrations](core/migrations.md): Summary of schema changes from 0001_initial to 0006_userprofile_height_ft...
+- [Migrations](core.migrations.md): Summary of schema changes from 0001_initial to 0006_userprofile_height_ft...
+
+## Other Apps
+- [Garmin Connect](garminconnect.md): Handles all interactions with the Garmin Connect API.
+- [Health Connect](healthconnect.md): Integrates with the Health Connect Gateway.
+- [Liftosaur](liftosaur.md): Integrates with the Liftosaur workout tracking application.
+- [Social](social.md): Provides social features like friendships and groups.
 
 ## Static Files
 - [Static Files](static.md): PWA manifest.json, sw.js, icons, screenshots, app structure.

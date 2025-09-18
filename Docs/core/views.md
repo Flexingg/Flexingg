@@ -1,145 +1,83 @@
 # Core Views Documentation
 
 ## Overview
-The `Flexingg/core/views.py` file defines Django views for the fitness app: class-based views for rendering templates (home, auth, settings, stubs) and function-based API views for chart data (steps, calories, sweat score) with friend comparisons and rankings. Imports include logging, generic views, forms, auth utils, models, and timezone. User authentication is checked in most views. Chart APIs support date ranges (current_month, last_month, etc.) and return JSON with cumulative data, friends_data, podium, stats. Stub views for Garmin sync. calculate_sweat_score is a helper function.
+The `Flexingg/core/views.py` file contains the central views for the Flexingg application. It uses a mix of Django's class-based views to render templates and handle form submissions.
 
 ## Class-Based Views
 
 ### HomeView (extends TemplateView)
-- **Purpose**: Renders the main dashboard/home page.
-- **Template**: 'home.html'.
+- **Purpose**: Renders the main dashboard page for authenticated users.
+- **Template**: `home.html`.
 - **Methods**:
-  - `get_context_data(self, **kwargs)`: Adds user profile data if authenticated (profile, total_gems=gym_gems, total_coins=cardio_coins, level).
-- **Handling**: GET only; redirects authenticated users to home.
-- **Usage**: Root URL; displays user stats/currencies/level.
+  - `get_context_data(self, **kwargs)`: This method enriches the context with a large amount of user-specific data:
+    - **User Profile**: Basic profile information, including `gym_gems`, `cardio_coins`, and `level`.
+    - **Garmin & Health Connect Sync**: Initiates asynchronous data sync tasks for Garmin and Health Connect based on a debounce timer.
+    - **Today's Stats**: Calculates and adds today's total calories burned, steps taken, lifting volume (in thousands), and consumed calories (from Health Connect) to the context.
 
 ### SignUpView (extends View)
 - **Purpose**: Handles user registration.
-- **Template**: 'sign_up.html'.
-- **Form**: SignUpForm.
+- **Template**: `sign_up.html`.
+- **Form**: `SignUpForm`.
 - **Methods**:
-  - `get(self, request)`: Renders form if not authenticated; redirects to home if authenticated.
-  - `post(self, request)`: Validates form; saves user if valid, redirects to sign_in; re-renders on error.
-- **Handling**: GET/POST; auth check.
-- **Usage**: Signup flow; creates UserProfile.
+  - `get`: Renders the registration form. Redirects to the home page if the user is already authenticated.
+  - `post`: Processes the submitted registration form. On success, it saves the new user and redirects to the sign-in page.
 
 ### SignInView (extends View)
-- **Purpose**: Handles user login.
-- **Template**: 'sign_in.html'.
-- **Form**: LoginForm.
+- **Purpose**: Handles user authentication.
+- **Template**: `sign_in.html`.
+- **Form**: `LoginForm`.
 - **Methods**:
-  - `get(self, request)`: Renders form if not authenticated; redirects to home if authenticated.
-  - `post(self, request)`: Validates form; authenticates user; logs in and redirects to home if success; re-renders on error.
-- **Handling**: GET/POST; uses authenticate/login.
-- **Usage**: Login flow with Gamertag.
+  - `get`: Renders the login form. Redirects to the home page if the user is already authenticated.
+  - `post`: Authenticates the user's credentials. On success, it logs the user in and redirects to the home page.
 
 ### SignOutView (extends View)
-- **Purpose**: Logs out user.
+- **Purpose**: Logs the current user out.
 - **Methods**:
-  - `get(self, request)`: Calls logout and redirects to sign_in.
-- **Handling**: GET only.
-- **Usage**: Logout endpoint.
-
-### SyncGarminView (extends TemplateView)
-- **Purpose**: Stub for Garmin sync page (template not created).
-- **Template**: 'core/garmin_sync.html'.
-- **Methods**:
-  - `get_context_data(self, **kwargs)`: Adds {'message': 'Garmin Sync Page'}.
-- **Handling**: GET only.
-- **Usage**: Future Garmin sync UI.
-
-### BackgroundGarminSyncView (extends View)
-- **Purpose**: Stub for background Garmin sync API.
-- **Methods**:
-  - `post(self, request)`: If authenticated, returns JSON {'success': True, 'steps_synced': 0, 'activities_synced': 0}; else 401 error.
-- **Handling**: POST only; dummy logic.
-- **Usage**: AJAX sync trigger.
-
-### StepsChartDataView (extends View)
-- **Purpose**: Stub for steps chart data API.
-- **Methods**:
-  - `get(self, request)`: If authenticated, returns dummy JSON {'user_data': [{'date': '2024-09-01', 'steps': 10000}, ...]}; else 401.
-- **Handling**: GET only.
-- **Usage**: Chart JS data fetch (replace with real).
-
-### SocialIndexView (extends TemplateView)
-- **Purpose**: Renders social index page (template not listed).
-- **Template**: 'social_index.html'.
-- **Methods**:
-  - `get_context_data(self, **kwargs)`: Adds profile if authenticated.
-- **Handling**: GET only.
-- **Usage**: Social features page.
-
-### HealthView (extends TemplateView)
-- **Purpose**: Renders health page (template not listed).
-- **Template**: 'health.html'.
-- **Methods**:
-  - `get_context_data(self, **kwargs)`: Adds profile if authenticated.
-- **Handling**: GET only.
-- **Usage**: Health metrics page.
+  - `get`: Logs the user out and redirects to the sign-in page.
 
 ### SettingsView (extends View)
-- **Purpose**: Handles profile settings update.
-- **Template**: 'settings.html'.
-- **Form**: ProfileForm.
+- **Purpose**: Allows users to update their profile information.
+- **Template**: `settings.html`.
+- **Form**: `ProfileForm`.
 - **Methods**:
-  - `get(self, request)`: If authenticated, renders form with instance=user; redirects to sign_in if not.
-  - `post(self, request)`: Validates form; saves if valid, redirects to settings; re-renders on error.
-- **Handling**: GET/POST; context includes form and profile.
-- **Usage**: Update username, email, height, weight, sex.
+  - `get`: Renders the profile form, pre-filled with the current user's data.
+  - `post`: Processes the submitted profile form, including the optional avatar image upload. On success, it saves the changes and reloads the page with a success message.
 
-## Function-Based Views (APIs)
+### LiftosaurConnectView (extends View)
+- **Purpose**: Connects a user's Liftosaur account by saving their Liftosaur User ID.
+- **Methods**:
+  - `post`: Retrieves the `liftosaur_user_id` from the POST request, saves it to the user's profile, and redirects back to the settings page.
 
-### get_calories_chart_data(request)
-- **Purpose**: API for cumulative calories chart data with friends and podium (incomplete in code; cuts off at friends_data setup).
-- **Handling**: GET; requires auth (else error).
-- **Logic**:
-  - Parses range_param (current_month default) to set start_date/end_date.
-  - Queries GarminActivity for user calories in range, aggregates by date, makes cumulative.
-  - Sets up friends via Friendship 'accepted' (from/to_user).
-  - Prepares all_users_calories for ranking (user + friends).
-  - Code incomplete: cuts off before returning JSON.
-- **Response**: Expected JsonResponse with user_data (cumulative list), friends_data, podium_data (top 3), stats (totals, average, rank), date_range.
-- **Usage**: Chart endpoint; supports ranges like last_year, alltime.
+### LiftosaurDisconnectView (extends View)
+- **Purpose**: Disconnects a user's Liftosaur account.
+- **Methods**:
+  - `post`: Removes the `liftosaur_user_id` from the user's profile and redirects back to the settings page.
 
-### get_steps_chart_data(request)
-- **Purpose**: API for cumulative steps chart data from GarminDailySteps with friends/podium.
-- **Handling**: GET; requires auth (401 else).
-- **Logic**:
-  - Parses range_param for date range.
-  - Queries GarminDailySteps for user, aggregates by date, cumulative.
-  - Gets friend IDs from accepted Friendships.
-  - For each friend: Queries their steps, cumulative data (includes 0 days).
-  - Aggregates totals for ranking (user + friends with >0 steps), sorts for podium (top 3).
-  - Stats: user_total, friends_average, user_rank, sentence (placeholder).
-- **Response**: JsonResponse({'user_data': list of {'date', 'steps'} cumulative, 'friends_data': list of {'name', 'data': cumulative}, 'podium_data': top 3, 'stats': dict, 'date_range': dict}).
-- **Usage**: Steps chart; includes flat lines for friends with no data.
+### ComingSoonView (extends TemplateView)
+- **Purpose**: Renders a "coming soon" page for features that are not yet implemented.
+- **Template**: `comingsoon.html`.
 
-### calculate_sweat_score(activity, weights_dict)
-- **Purpose**: Helper to compute sweat score from activity HR zones.
-- **Logic**:
-  - If raw_data has 'hrTimeInZone': Extracts times (seconds/60 to minutes) for zones 1-5; t0 = total_duration - sum(t1-t5).
-  - Score = sum(t * weight for each zone, defaults 1,2,3,5,8,12).
-  - Fallback: calories / 2 if no HR data, else 0.
-- **Usage**: Called in get_sweat_score_chart_data for each activity.
+### OfflineView (extends TemplateView)
+- **Purpose**: Renders a page to be displayed when the user is offline (for PWA functionality).
+- **Template**: `offline.html`.
 
-### get_sweat_score_chart_data(request)
-- **Purpose**: API for cumulative sweat score chart from activities with friends/podium.
-- **Handling**: GET; requires auth (401 else).
-- **Logic**:
-  - Parses range_param for date range.
-  - Gets weights_dict from all SweatScoreWeights.
-  - Queries GarminActivity (duration >0) for user, aggregates scores by date via calculate_sweat_score, cumulative.
-  - Gets friend IDs from accepted Friendships.
-  - For each friend: Similar aggregation/cumulative (includes 0).
-  - Totals for ranking (user + friends >0), sorts for podium.
-  - Stats: user_total, friends_average, user_rank.
-- **Response**: JsonResponse similar to steps (user_data, friends_data, podium_data, stats, date_range).
-- **Usage**: Sweat score chart; uses HR zones for gamified scoring.
+### ProfileView (extends LoginRequiredMixin, TemplateView)
+- **Purpose**: Renders the user's profile page.
+- **Template**: `profile.html`.
 
-## Notes
-- Logging: Logger for __name__; used in get_calories_chart_data.
-- Stubs: Some views (e.g., StepsChartDataView) are dummies; implement real logic.
-- Auth: Consistent checks; uses get_user_model() as User.
-- Signals: Not in views, but post_save in models affects context.
-- Templates: Some referenced but not in file list (e.g., social_index.html); create as needed.
+### ServiceWorkerView (extends View)
+- **Purpose**: Serves the `sw.js` service worker file for the PWA.
+- **Methods**:
+  - `get`: Reads the service worker file from the static files and returns it with the correct content type and headers.
+
+### GymView (extends TemplateView)
+- **Purpose**: Renders the "Gym" page.
+- **Template**: `gym.html`.
+
+### LockerRoomView (extends TemplateView)
+- **Purpose**: Renders the "Locker Room" page where users can manage their gear.
+- **Template**: `locker_room.html`.
+
+### ShopView (extends TemplateView)
+- **Purpose**: Renders the in-game shop page.
+- **Template**: `shop.html`.
