@@ -4,6 +4,7 @@ Welcome to the comprehensive documentation for the Flexingg fitness PWA project.
 
 ## Project Overview
 - [Overview](overview.md): High-level project structure, purpose, architecture, and key directories.
+- [Future Roadmap](future-roadmap.md): Outlines the future plans for the app, including new features and gameplay mechanics.
 
 ## Root Files
 - [Root Files](root-files.md): Documentation of manage.py, asgi.py, wsgi.py, docker-compose.yml, Dockerfile, requirements.txt, .gitignore, LICENSE, README.md.
