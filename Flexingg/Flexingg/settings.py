@@ -60,11 +60,6 @@ INSTALLED_APPS = [
     "django_celery_beat",
 ]
 
-COMPONENT_APPS = [
-    "core",
-    "social",
-]
-
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -117,7 +112,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'flexingg_postgres'),
         'USER': os.getenv('DB_USER', 'flexingg_user'),
-        'PASSWORD': os.getenv('DB_PW', 'This_is_@_super_secure_password_101'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'flexingg_pass'),
         'HOST': os.getenv('DB_HOST', '127.0.0.1'),
         'PORT': os.getenv('DB_PORT', '5432'),
     }
