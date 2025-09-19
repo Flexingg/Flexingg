@@ -1,9 +1,5 @@
 from django.urls import path
-from .views import (
-    HomeView, SignUpView, SignInView, SignOutView, SettingsView, sync_data_view,
-    LiftosaurConnectView, LiftosaurDisconnectView, ComingSoonView, OfflineView,
-    ServiceWorkerView, ProfileView, GymView, LockerRoomView, ShopView, StatsAPIView
-)
+from .views import *
 
 app_name = 'fitness'
 
@@ -13,7 +9,8 @@ urlpatterns = [
     path('sign-in/', SignInView.as_view(), name='sign_in'),
     path('sign-out/', SignOutView.as_view(), name='sign_out'),
     path('settings/', SettingsView.as_view(), name='settings'),
-    path('sync-data/', sync_data_view, name='sync_data'),
+    path('data-priorities/', DataPriorityView.as_view(), name='data_priorities'),
+    path('sync-data/', sync_data_view, name='sync_data_view'),
     path('connect-liftosaur/', LiftosaurConnectView.as_view(), name='connect_liftosaur'),
     path('disconnect-liftosaur/', LiftosaurDisconnectView.as_view(), name='disconnect_liftosaur'),
     

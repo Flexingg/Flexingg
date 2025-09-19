@@ -6,9 +6,10 @@ from django.views.generic import ListView, TemplateView, View, DetailView
 from django.utils import timezone
 from django.utils.timezone import get_current_timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
-from .forms import SignUpForm, LoginForm, ProfileForm
+from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
 from .tasks import sync_user_data
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views import View
@@ -29,6 +30,7 @@ import random
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum, Min
 import os
+from django.db import transaction
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -261,6 +263,91 @@ def sync_data_view(request):
     messages.error(request, "This action can only be performed by clicking the button.")
     return redirect('fitness:settings')
 
+
+class DataPriorityView(LoginRequiredMixin, View):
+    template_name = 'data_priorities.html'
+
+    def get(self, request):
+        queryset = DataPriority.objects.filter(user=request.user)
+        if not queryset.exists():
+            # Create default priorities
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='workout',
+                source='garmin',
+                defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='workout',
+                source='liftosaur',
+                defaults={'rank': 2}
+            )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='sleep',
+                source='healthconnect',
+                defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='steps',
+                source='garmin',
+                defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='steps',
+                source='healthconnect',
+                defaults={'rank': 2}
+            )
+            # Refresh queryset
+            queryset = DataPriority.objects.filter(user=request.user)
+        formset = DataPriorityFormSet(queryset=queryset)
+        return render(request, self.template_name, {'formset': formset})
+
+    def post(self, request):
+        formset = DataPriorityFormSet(request.POST, queryset=DataPriority.objects.filter(user=request.user))
+        logger.info(f"Formset validation: {formset.is_valid()}")
+        if formset.is_valid():
+            logger.info("Formset is valid. Processing data:")
+            for form in formset:
+                logger.info(f"Form cleaned_data: {form.cleaned_data}")
+            from collections import defaultdict
+            with transaction.atomic():
+                instances = formset.save(commit=False)
+                for instance in instances:
+                    instance.user = request.user
+                
+                groups = defaultdict(list)
+                for form in formset:
+                    if form.instance.pk:
+                        groups[form.cleaned_data['data_type']].append((form.instance, form.cleaned_data['rank']))
+                logger.info(f"Groups: {dict(groups)}")
+                
+                # Temporarily assign unique high ranks to avoid unique constraint violations during reassignment
+                for data_type, items in groups.items():
+                    for instance, _ in items:
+                        instance.rank = 1000 + instance.pk
+                        instance.save()
+                
+                # Assign sequential ranks based on submitted order per group
+                for data_type, items in groups.items():
+                    sorted_items = sorted(items, key=lambda x: x[1])
+                    for i, (instance, _) in enumerate(sorted_items, 1):
+                        instance.rank = i
+                    for instance, _ in sorted_items:
+                        instance.save()
+                logger.info(f"After save, current priorities: {list(DataPriority.objects.filter(user=request.user).values('data_type', 'source', 'rank'))}")
+            messages.success(request, 'Data priorities updated successfully!')
+            return redirect('fitness:data_priorities')
+        else:
+            logger.error(f"Formset errors: {formset.errors}")
+            logger.error(f"Formset non-form errors: {formset.non_form_errors()}")
+            for form in formset:
+                if form.errors:
+                    logger.error(f"Form {form.instance.pk if form.instance.pk else 'new'} errors: {form.errors}")
+        return render(request, self.template_name, {'formset': formset})
 
 
 class SettingsView(View):

@@ -37,12 +37,19 @@
 
         <!-- Manual Sync -->
         <div class="pt-4">
-            <form action="{% url 'sync_data' %}" method="post">
+            <form action='{% url "fitness:sync_data_view" %}' method="post">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 font-bold text-black bg-yellow-400 rounded-md hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-opacity-50">
                     Sync My Data
                 </button>
             </form>
+        </div>
+
+        <!-- Data Priorities Link -->
+        <div class="pt-4">
+            <a href="{% url 'fitness:data_priorities' %}" class="w-full block px-4 py-2 font-bold text-center text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                Manage Data Priorities
+            </a>
         </div>
     </section>
 

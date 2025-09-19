@@ -257,9 +257,46 @@ class SweatScoreWeights(models.Model):
 
 
 @receiver(post_save, sender=UserProfile)
-def create_color_preferences(sender, instance, created, **kwargs):  
-    if created:  
+def create_color_preferences(sender, instance, created, **kwargs):
+    if created:
         ColorPreferences.objects.create(user=instance)
+
+@receiver(post_save, sender=UserProfile)
+def create_default_data_priorities(sender, instance, created, **kwargs):
+    if created:
+        # Workout priorities: Garmin primary, Liftosaur secondary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='workout',
+            source='garmin',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='workout',
+            source='liftosaur',
+            defaults={'rank': 2}
+        )
+        # Sleep priorities: Health Connect primary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='sleep',
+            source='healthconnect',
+            defaults={'rank': 1}
+        )
+        # Steps priorities: Garmin primary, Health Connect secondary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='steps',
+            source='garmin',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='steps',
+            source='healthconnect',
+            defaults={'rank': 2}
+        )
 
 
 class ConnectedService(models.Model):

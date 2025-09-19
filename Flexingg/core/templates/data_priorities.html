@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Flexin.gg - Data Priorities{% endblock %}
+
+{% block content %}
+<main class="flex-grow p-4 overflow-y-auto space-y-8 md:p-6">
+    <section>
+        <h2 class="font-pixel text-xl text-[#00f5d4]">Data Source Priorities</h2>
+        <p class="text-gray-300 mb-4">Set the order of preference for data sources when syncing.</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ formset.management_form }}
+            <table class="w-full border-collapse border border-gray-600">
+                <thead>
+                    <tr class="bg-gray-800">
+                        <th class="border border-gray-600 p-2 text-left">Data Type</th>
+                        <th class="border border-gray-600 p-2 text-left">Source</th>
+                        <th class="border border-gray-600 p-2 text-left">Rank</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                    <tr class="hover:bg-gray-700">
+                        {{ form.id }}
+                        <td class="border border-gray-600 p-2">
+                            {{ form.data_type }}
+                            {{ form.data_type.errors }}
+                        </td>
+                        <td class="border border-gray-600 p-2">
+                            {{ form.source }}
+                            {{ form.source.errors }}
+                        </td>
+                        <td class="border border-gray-600 p-2">
+                            {{ form.rank }}
+                            {{ form.rank.errors }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="mt-4 space-x-4">
+                <button type="submit" class="px-4 py-2 font-bold text-black bg-yellow-400 rounded-md hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-opacity-50">
+                    Save Priorities
+                </button>
+                <a href="{% url 'fitness:settings' %}" class="px-4 py-2 font-bold text-white bg-gray-600 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </section>
+</main>
+{% endblock %}

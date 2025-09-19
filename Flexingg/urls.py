@@ -6,6 +6,4 @@ urlpatterns = [
     path('', include('core.urls')),
     path('liftosaur/', include('liftosaur.urls')),
     path('social/', include('social.urls')),
-    path('garminconnect/', include('garminconnect.urls')),
-    path('healthconnect/', include('healthconnect.urls')),
 ]

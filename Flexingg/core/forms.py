@@ -2,8 +2,29 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import get_user_model
+from django.forms import modelformset_factory
+
+from .models import DataPriority
 
 User = get_user_model()
+
+
+class DataPriorityForm(forms.ModelForm):
+    class Meta:
+        model = DataPriority
+        fields = ['data_type', 'source', 'rank']
+        widgets = {
+            'data_type': forms.TextInput(attrs={'readonly': True, 'class': 'pixel-input'}),
+            'source': forms.TextInput(attrs={'readonly': True, 'class': 'pixel-input'}),
+            'rank': forms.NumberInput(attrs={'class': 'pixel-input', 'min': 1}),
+        }
+
+DataPriorityFormSet = modelformset_factory(
+    DataPriority,
+    form=DataPriorityForm,
+    extra=0,
+    can_delete=False
+)
 
 
 class LoginForm(AuthenticationForm):

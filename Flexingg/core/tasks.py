@@ -53,6 +53,23 @@ def normalize_hc_sleep(sleep_session):
         'data': sleep_session
     }
 
+def normalize_hc_workout(exercise_session):
+    start_str = exercise_session.get('start', '')
+    if 'Z' in start_str:
+        start_str = start_str.replace('Z', '')
+    end_str = exercise_session.get('end', '')
+    if 'Z' in end_str:
+        end_str = end_str.replace('Z', '')
+
+    start_time = timezone.make_aware(datetime.fromisoformat(start_str))
+    end_time = timezone.make_aware(datetime.fromisoformat(end_str))
+    return {
+        'source_id': exercise_session.get('_id'),
+        'start_time': start_time,
+        'end_time': end_time,
+        'data': exercise_session
+    }
+
 def normalize_garmin_steps(day):
     return {
         'date': datetime.strptime(day.get('calendarDate'), '%Y-%m-%d').date(),
@@ -100,15 +117,18 @@ def sync_user_data(user_id):
 
     try:
         garmin_auth_service = ConnectedService.objects.get(user=user, service_name='garmin')
-        garth.client.oauth2_token = garmin_auth_service.auth_data
+        configure_garmin_client(garmin_auth_service.auth_data)
         activities_url = f"/activitylist-service/activities/search/activities?limit=999&start=0"
         garmin_activities = garth.client.connectapi(activities_url)
         end_date = timezone.now().date()
         start_date = end_date - timedelta(days=30)
         steps_url = f"/usersummary-service/stats/steps/daily/{start_date.isoformat()}/{end_date.isoformat()}"
         garmin_steps = garth.client.connectapi(steps_url)
+        logger.info("Successfully fetched Garmin data")
     except Exception as e:
         logger.error(f"Error fetching Garmin data: {e}")
+        garmin_activities = []
+        garmin_steps = []
 
     try:
         hc_auth = ConnectedService.objects.get(user=user, service_name='healthconnect')
@@ -122,8 +142,13 @@ def sync_user_data(user_id):
             client.expiry = expiry_str
         if client.is_authenticated():
             hc_data = client.fetch_historical(days=30)
+            logger.info("Successfully fetched Health Connect data")
+        else:
+            logger.warning("Health Connect client not authenticated")
+            hc_data = {}
     except Exception as e:
         logger.error(f"Error fetching Health Connect data: {e}")
+        hc_data = {}
 
     try:
         liftosaur_auth = ConnectedService.objects.get(user=user, service_name='liftosaur')
@@ -131,25 +156,61 @@ def sync_user_data(user_id):
         session_token = liftosaur_auth.auth_data.get('session_token')
         if liftosaur_user_id and session_token:
             liftosaur_data = liftosaur_download(liftosaur_user_id, session_token)
+            logger.info("Successfully fetched Liftosaur data")
+        else:
+            logger.warning("Liftosaur auth data incomplete")
+            liftosaur_data = {}
     except Exception as e:
         logger.error(f"Error fetching Liftosaur data: {e}")
+        liftosaur_data = {}
 
     # 4. Process and save data in priority order
-    if 'workout' in priorities_by_type:
+    for data_type in ['workout', 'sleep', 'steps']:
+        if data_type not in priorities_by_type:
+            logger.warning(f"No priorities set for {data_type} for user {user.username}; skipping.")
+            continue
         filled_dates = set()
-        for source in priorities_by_type['workout']:
-            if source == 'garmin':
-                for activity in garmin_activities:
-                    norm = normalize_garmin_activity_to_workout(activity)
-                    if norm['start_time'].date() not in filled_dates:
-                        Workout.objects.update_or_create(user=user, source='garmin', source_id=norm['source_id'], defaults=norm)
-                        filled_dates.add(norm['start_time'].date())
-            elif source == 'liftosaur' and liftosaur_data:
-                 for workout in liftosaur_data.get('storage', {}).get('history', []):
-                    norm = normalize_liftosaur_workout(workout)
-                    if norm['start_time'].date() not in filled_dates:
-                        Workout.objects.update_or_create(user=user, source='liftosaur', source_id=norm['source_id'], defaults=norm)
-                        filled_dates.add(norm['start_time'].date())
+        for source in priorities_by_type[data_type]:
+            if data_type == 'workout':
+                if source == 'garmin':
+                    for activity in garmin_activities:
+                        norm = normalize_garmin_activity_to_workout(activity)
+                        if norm['start_time'].date() not in filled_dates:
+                            Workout.objects.update_or_create(user=user, source='garmin', source_id=norm['source_id'], defaults=norm)
+                            filled_dates.add(norm['start_time'].date())
+                elif source == 'liftosaur' and liftosaur_data:
+                     for workout in liftosaur_data.get('storage', {}).get('history', []):
+                        norm = normalize_liftosaur_workout(workout)
+                        if norm['start_time'].date() not in filled_dates:
+                            Workout.objects.update_or_create(user=user, source='liftosaur', source_id=norm['source_id'], defaults=norm)
+                            filled_dates.add(norm['start_time'].date())
+                elif source == 'healthconnect' and 'exerciseSession' in hc_data:
+                    for exercise in hc_data['exerciseSession']:
+                        norm = normalize_hc_workout(exercise)
+                        if norm['start_time'].date() not in filled_dates:
+                            Workout.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
+                            filled_dates.add(norm['start_time'].date())
+            elif data_type == 'sleep':
+                if source == 'healthconnect' and 'sleepSession' in hc_data:
+                    for sleep_session in hc_data['sleepSession']:
+                        norm = normalize_hc_sleep(sleep_session)
+                        if norm['start_time'].date() not in filled_dates:
+                            Sleep.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
+                            filled_dates.add(norm['start_time'].date())
+            elif data_type == 'steps':
+                if source == 'garmin':
+                    for day in garmin_steps:
+                        norm = normalize_garmin_steps(day)
+                        if norm['date'] not in filled_dates:
+                            DailySteps.objects.update_or_create(user=user, source='garmin', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
+                            filled_dates.add(norm['date'])
+                elif source == 'healthconnect' and 'steps' in hc_data:
+                    for steps_record in hc_data['steps']:
+                        norm = normalize_hc_steps(steps_record)
+                        if norm['date'] not in filled_dates:
+                            DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
+                            filled_dates.add(norm['date'])
+            logger.info(f"Processed {data_type} data from {source} for user {user.username}")
 
     if 'sleep' in priorities_by_type:
         filled_dates = set()
