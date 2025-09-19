@@ -7,17 +7,17 @@ from django.utils import timezone
 from django.utils.timezone import get_current_timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm
+from .tasks import sync_user_data
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views import View
 from .models import SweatScoreWeights, UserProfile, Friendship
-from django.contrib import messages
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
-from liftosaur.models import Workout
+from .models import Workout, DailySteps, Sleep
 from .models import *  # JWT, Notification, Relationship
 from healthconnect.utils import get_daily_consumed_calories
 from healthconnect.tasks import healthconnect_sync_task
-from healthconnect.models import HealthConnectData
 from django.contrib.staticfiles.finders import find
 from django.http import HttpResponse
 from django.contrib.auth.models import User
@@ -80,16 +80,17 @@ class HomeView(TemplateView):
                             context['hc_sync_triggered'] = True
                             logger.info(f"Triggered Health Connect sync for profile {profile.id}")
         
-            # Calculate today's total calories from the current user's Garmin activities
+            # Calculate today's total calories from the current user's unified workouts
             today = timezone.localtime().date()
             context['todays_date'] = today.isoformat()
-            todays_calories = GarminActivity.objects.filter(
-                user=self.request.user,
-                start_time_utc__date=today
-            ).aggregate(total=Sum('calories'))['total'] or 0
+            todays_calories = 0
+            workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
+            for workout in workouts:
+                if workout.source == 'garmin':
+                    todays_calories += workout.data.get('calories', 0)
             context['todays_total_calories'] = todays_calories
 
-            todays_steps = GarminDailySteps.objects.filter(
+            todays_steps = DailySteps.objects.filter(
                 user=self.request.user,
                 date=today
             ).aggregate(total=Sum('steps'))['total'] or 0
@@ -97,10 +98,17 @@ class HomeView(TemplateView):
 
             # Calculate today's lifting volume
             total_volume = 0
-            workouts = Workout.objects.filter(user=self.request.user, timestamp__date=today)
+            workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
             for workout in workouts:
-                for exercise in workout.exercises.all():
-                    total_volume += exercise.get_volume(unit='lb')
+                if workout.source == 'liftosaur':
+                    # This is a placeholder, as the volume calculation is complex
+                    # and depends on the structure of the data from Liftosaur.
+                    # For now, we'll just sum up the reps.
+                    if workout.data.get('storage') and workout.data.get('storage').get('history'):
+                        for entry in workout.data.get('storage', {}).get('history', [])[0].get('entries', []):
+                            for s in entry.get('sets', []):
+                                total_volume += s.get('completedReps', 0) * s.get('completedWeight', {}).get('value', 0)
+
             todays_lifting_volume_k = round(total_volume / 1000) if total_volume > 0 else 0
             context['todays_lifting_volume_k'] = todays_lifting_volume_k
 
@@ -136,23 +144,27 @@ class StatsAPIView(LoginRequiredMixin, View):
 
         # Calculate stats for target_date
         # Calories burned
-        calories = GarminActivity.objects.filter(
-            user=profile,
-            start_time_utc__date=target_date
-        ).aggregate(total=Sum('calories'))['total'] or 0
+        calories = 0
+        workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
+        for workout in workouts:
+            if workout.source == 'garmin':
+                calories += workout.data.get('calories', 0)
 
         # Steps
-        steps = GarminDailySteps.objects.filter(
+        steps = DailySteps.objects.filter(
             user=profile,
             date=target_date
         ).aggregate(total=Sum('steps'))['total'] or 0
 
         # Lifting volume
         total_volume = 0
-        workouts = Workout.objects.filter(user=profile, timestamp__date=target_date)
+        workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            for exercise in workout.exercises.all():
-                total_volume += exercise.get_volume(unit='lb')
+            if workout.source == 'liftosaur':
+                if workout.data.get('storage') and workout.data.get('storage').get('history'):
+                    for entry in workout.data.get('storage', {}).get('history', [])[0].get('entries', []):
+                        for s in entry.get('sets', []):
+                            total_volume += s.get('completedReps', 0) * s.get('completedWeight', {}).get('value', 0)
         volume_k = round(total_volume / 1000) if total_volume > 0 else 0
 
         # Consumed calories
@@ -169,25 +181,17 @@ class StatsAPIView(LoginRequiredMixin, View):
         if get_earliest:
             earliest_candidates = []
             # Steps earliest
-            steps_min = GarminDailySteps.objects.filter(user=profile).aggregate(min_date=Min('date'))['min_date']
+            steps_min = DailySteps.objects.filter(user=profile).aggregate(min_date=Min('date'))['min_date']
             if steps_min:
                 earliest_candidates.append(steps_min)
-            # Activities earliest
-            act_min = GarminActivity.objects.filter(user=profile).aggregate(min_date=Min('start_time_utc__date'))['min_date']
-            if act_min:
-                earliest_candidates.append(act_min)
             # Workouts earliest
-            workout_min = Workout.objects.filter(user=profile).aggregate(min_date=Min('timestamp__date'))['min_date']
+            workout_min = Workout.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
             if workout_min:
                 earliest_candidates.append(workout_min)
-            # HealthConnect nutrition earliest
-            from healthconnect.models import HealthConnectData
-            hc_min = HealthConnectData.objects.filter(
-                profile=profile,
-                method='nutrition'
-            ).aggregate(min_date=Min('start_time__date'))['min_date']
-            if hc_min:
-                earliest_candidates.append(hc_min)
+            # Sleep earliest
+            sleep_min = Sleep.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
+            if sleep_min:
+                earliest_candidates.append(sleep_min)
 
             if earliest_candidates:
                 earliest_date = min(earliest_candidates)
@@ -245,6 +249,17 @@ class SignOutView(View):
     def get(self, request):
         logout(request)
         return redirect('fitness:sign_in')
+
+
+@login_required
+def sync_data_view(request):
+    if request.method == 'POST':
+        sync_user_data.delay(request.user.id)
+        messages.success(request, "Sync started! Your data will appear on your dashboard shortly.")
+        return redirect('fitness:settings')
+    # Redirect or show an error if accessed via GET
+    messages.error(request, "This action can only be performed by clicking the button.")
+    return redirect('fitness:settings')
 
 
 

@@ -34,6 +34,16 @@
     <section>
         <h3 class="font-pixel text-lg text-purple-400">INTEGRATIONS</h3>
         {% component "integrations_section" profile=profile %}{% endcomponent %}
+
+        <!-- Manual Sync -->
+        <div class="pt-4">
+            <form action="{% url 'sync_data' %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="w-full px-4 py-2 font-bold text-black bg-yellow-400 rounded-md hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-600 focus:ring-opacity-50">
+                    Sync My Data
+                </button>
+            </form>
+        </div>
     </section>
 
 </main>

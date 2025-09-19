@@ -6,7 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.contrib import messages
 from .models import Garmin_Auth, GarminDailySteps, GarminActivity
-from core.models import UserProfile
+from core.models import UserProfile, ConnectedService
 from core.forms import ProfileForm
 from .forms import GarminConnectForm
 import garth
@@ -306,6 +306,13 @@ class ConnectGarminView(View):
                 # Create Garmin_Auth record
                 garmin_auth = Garmin_Auth.objects.create(**garmin_auth_data)
                 
+                # Create or update the ConnectedService
+                ConnectedService.objects.update_or_create(
+                    user=request.user,
+                    service_name='garmin',
+                    defaults={'auth_data': {**oauth1_data, **oauth2_data}}
+                )
+
                 messages.success(request, f'Garmin account ({garmin_email}) linked successfully!')
                 return redirect('fitness:settings')
 

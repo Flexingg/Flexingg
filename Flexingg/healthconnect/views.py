@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.utils.timezone import make_aware, is_aware
 from .utils import HCGatewayClient
 from .models import HealthConnectData
-from core.models import UserProfile
+from core.models import UserProfile, ConnectedService
 
 
 @login_required
@@ -44,6 +44,14 @@ def connect_healthconnect(request):
             profile.hc_token_expiry = expiry
             profile.hc_last_sync = None  # Reset last sync on new connection
             profile.save()
+
+            # Create or update the ConnectedService
+            ConnectedService.objects.update_or_create(
+                user=request.user,
+                service_name='healthconnect',
+                defaults={'auth_data': result}
+            )
+
             if is_ajax:
                 return JsonResponse({'status': 'success', 'message': 'Successfully connected to Health Connect.'})
             messages.success(request, 'Successfully connected to Health Connect.')

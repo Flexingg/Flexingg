@@ -260,3 +260,89 @@ class SweatScoreWeights(models.Model):
 def create_color_preferences(sender, instance, created, **kwargs):  
     if created:  
         ColorPreferences.objects.create(user=instance)
+
+
+class ConnectedService(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='connected_services')
+    service_name = models.CharField(max_length=50, choices=[('garmin', 'Garmin'), ('healthconnect', 'Health Connect'), ('liftosaur', 'Liftosaur')])
+    auth_data = models.JSONField(help_text="Stores authentication tokens and other service-specific data.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'service_name')
+        verbose_name = "Connected Service"
+        verbose_name_plural = "Connected Services"
+
+    def __str__(self):
+        return f"{self.user.username}'s {self.get_service_name_display()} Connection"
+
+class DataPriority(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='data_priorities')
+    data_type = models.CharField(max_length=50, choices=[('workout', 'Workout'), ('sleep', 'Sleep'), ('steps', 'Steps')])
+    source = models.CharField(max_length=50, choices=[('garmin', 'Garmin'), ('healthconnect', 'Health Connect'), ('liftosaur', 'Liftosaur')])
+    rank = models.IntegerField(help_text="Priority rank (1 is highest)")
+
+    class Meta:
+        unique_together = ('user', 'data_type', 'rank')
+        ordering = ['user', 'data_type', 'rank']
+        verbose_name = "Data Priority"
+        verbose_name_plural = "Data Priorities"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_data_type_display()}: Rank {self.rank} is {self.get_source_display()}"
+
+class Workout(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_workouts')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    data = models.JSONField(help_text="Normalized workout data")
+
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-start_time']
+        verbose_name = "Workout"
+        verbose_name_plural = "Workouts"
+
+    def __str__(self):
+        return f"Workout for {self.user.username} from {self.source} on {self.start_time.date()}"
+
+class Sleep(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_sleep')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    data = models.JSONField(help_text="Normalized sleep data")
+
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-start_time']
+        verbose_name = "Sleep"
+        verbose_name_plural = "Sleep Data"
+
+    def __str__(self):
+        return f"Sleep for {self.user.username} from {self.source} on {self.start_time.date()}"
+
+class DailySteps(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_steps')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255, null=True, blank=True) # Steps data might not have a unique ID from source
+    date = models.DateField()
+    steps = models.PositiveIntegerField()
+    data = models.JSONField(help_text="Normalized steps data", null=True, blank=True)
+
+
+    class Meta:
+        unique_together = ('user', 'source', 'date')
+        ordering = ['-date']
+        verbose_name = "Daily Steps"
+        verbose_name_plural = "Daily Steps"
+
+    def __str__(self):
+        return f"Steps for {self.user.username} from {self.source} on {self.date}: {self.steps}"
