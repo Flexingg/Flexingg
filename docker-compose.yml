@@ -43,8 +43,27 @@ services:
   celery:
     build: .
     container_name: flexingg_celery_worker
-    command: celery -A flexingg worker -l info
-    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
+    command: >
+      bash -c '
+        wait_for_port() {
+          local port=$$1
+          local host=$$2
+          echo "Waiting for port $$port on $$host..."
+          timeout=30
+          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
+            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
+            sleep 1
+            timeout=$$((timeout-1))
+          done
+          if [ $$timeout -eq 0 ]; then
+            echo "Timeout waiting for port $$port on $$host"
+            exit 1
+          fi
+        }
+        wait_for_port 5432 db
+        wait_for_port 6379 redis
+        celery -A flexingg worker -l info
+      '
     volumes:
       - .:/app
     env_file:
@@ -59,8 +78,27 @@ services:
   celery-beat:
     build: .
     container_name: flexingg_celery_beat
-    command: celery -A flexingg beat -l info
-    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
+    command: >
+      bash -c '
+        wait_for_port() {
+          local port=$$1
+          local host=$$2
+          echo "Waiting for port $$port on $$host..."
+          timeout=30
+          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
+            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
+            sleep 1
+            timeout=$$((timeout-1))
+          done
+          if [ $$timeout -eq 0 ]; then
+            echo "Timeout waiting for port $$port on $$host"
+            exit 1
+          fi
+        }
+        wait_for_port 5432 db
+        wait_for_port 6379 redis
+        celery -A flexingg beat -l info
+      '
     volumes:
       - .:/app
     env_file:
