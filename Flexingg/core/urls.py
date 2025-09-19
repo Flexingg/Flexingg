@@ -20,4 +20,5 @@ urlpatterns = [
     path('gym/', GymView.as_view(), name='gym'),
     path('locker_room/', LockerRoomView.as_view(), name='locker_room'),
     path('shop/', ShopView.as_view(), name='shop'),
+    path('api/stats/', StatsAPIView.as_view(), name='stats_api'),
 ]

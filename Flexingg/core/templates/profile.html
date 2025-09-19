@@ -35,10 +35,10 @@
             <div class="mt-3">
                 <div class="flex justify-between items-center mb-1">
                     <span class="font-pixel text-xs text-gray-400">XP</span>
-                    <span class="font-pixel text-xs text-gray-400">{{ user.xp|default:0 }} / 20000</span>
+                    <span class="font-pixel text-xs text-gray-400">{{ user.xp }} / {{ next_level_xp }}</span>
                 </div>
                 <div class="progress-bar-container w-full">
-                    <div class="progress-bar" style="width: {% widthratio user.xp 20000 100 %}%"></div>
+                    <div class="progress-bar" style="width: {% widthratio user.xp next_level_xp 100 %}%"></div>
                 </div>
             </div>
         </div>
@@ -52,21 +52,21 @@
                 <svg class="w-8 h-8 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <div>
                     <p class="font-pixel text-sm text-gray-400">Calories Burned</p>
-                    <p class="font-pixel text-xl text-white mt-1">0</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_calories }}</p>
                 </div>
             </div>
             <div class="stat-card p-4 flex items-center space-x-3">
                 <svg class="w-8 h-8 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-12v4m-2-2h4m6 4v4m-2-2h4M17 3h4m-4 5v4m-2-2h4m-5 6v4m-2-2h4"></path></svg>
                 <div>
                     <p class="font-pixel text-sm text-gray-400">Weight Lifted</p>
-                    <p class="font-pixel text-xl text-white mt-1">0 lbs</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_weight_lifted }} lbs</p>
                 </div>
             </div>
             <div class="stat-card p-4 flex items-center space-x-3">
                 <svg class="w-8 h-8 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
                 <div>
                     <p class="font-pixel text-sm text-gray-400">Total Sleep</p>
-                    <p class="font-pixel text-xl text-white mt-1">0 hrs</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_sleep_hours }} hrs</p>
                 </div>
             </div>
         </div>
@@ -76,36 +76,27 @@
     <section>
         <h3 class="font-pixel text-lg text-yellow-300">LATEST ACTIVITIES</h3>
         <div class="space-y-4 mt-3">
+            {% for activity in recent_activities %}
             <div class="pixel-border bg-[#2a2a2a] p-4">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="font-pixel text-sm text-cyan-300">Morning Run</p>
-                        <p class="text-xs text-gray-400 mt-1">Yesterday - 6:30 AM</p>
+                        <p class="font-pixel text-sm {% if activity.type == 'cardio' and activity.unit == 'mi' %}text-cyan-300{% elif activity.type == 'lift' %}text-red-400{% else %}text-blue-300{% endif %}">{{ activity.name }}</p>
+                        <p class="text-xs text-gray-400 mt-1">{{ activity.relative_date }} - {{ activity.time }}</p>
                     </div>
                     <div class="text-right">
-                        <p class="font-pixel text-xl text-white">0 mi</p>
-                        <p class="text-xs text-gray-400 mt-1">0 min</p>
+                        <p class="font-pixel text-xl text-white">{{ activity.metric }} {{ activity.unit }}</p>
+                        {% if activity.duration %}
+                        <p class="text-xs text-gray-400 mt-1">{{ activity.duration }} min</p>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="mt-3 text-right">
-                    <span class="inline-block bg-[#1a1a1a] border border-[#444] text-green-400 text-xs font-pixel px-2 py-1">+0 XP</span>
+                    <span class="inline-block bg-[#1a1a1a] border border-[#444] text-green-400 text-xs font-pixel px-2 py-1">+{{ activity.xp }} XP</span>
                 </div>
             </div>
-            <div class="pixel-border bg-[#2a2a2a] p-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <p class="font-pixel text-sm text-red-400">Chest Day</p>
-                        <p class="text-xs text-gray-400 mt-1">2 days ago - 5:00 PM</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="font-pixel text-xl text-white">0 lbs</p>
-                        <p class="text-xs text-gray-400 mt-1">0 min</p>
-                    </div>
-                </div>
-                <div class="mt-3 text-right">
-                    <span class="inline-block bg-[#1a1a1a] border border-[#444] text-green-400 text-xs font-pixel px-2 py-1">+0 XP</span>
-                </div>
-            </div>
+            {% empty %}
+            <p class="text-gray-400 text-center">No recent activities.</p>
+            {% endfor %}
         </div>
     </section>
 

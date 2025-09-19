@@ -117,7 +117,7 @@
 
                 <!-- Daily Quest / Stats -->
                 <section class="space-y-4 bg-[#2a2a2a)">
-                    {% component "stat_card" todays_total_calories=todays_total_calories todays_steps=todays_steps todays_consumed_calories=todays_consumed_calories todays_lifting_volume_k=todays_lifting_volume_k %}{% endcomponent %}
+                    {% component "stat_card" todays_total_calories=todays_total_calories todays_steps=todays_steps todays_consumed_calories=todays_consumed_calories todays_lifting_volume_k=todays_lifting_volume_k todays_date=todays_date %}{% endcomponent %}
                 </section>
 
                 <!-- Competitions -->
@@ -138,11 +138,6 @@
                 <!-- Item Shop -->
                 <section>
                     {% component "item_shop" items="[{ 'name': 'Daily Deal', 'description': 'New gear just dropped.', 'price': 100 }]" %}{% endcomponent %}
-                </section>
-
-                <!-- Leaderboard -->
-                <section class="bg-[#2a2a2a]">
-                    {% component "leaderboard" users="[{ 'rank': 1, 'name': 'GIGA', 'score': 5000 }, { 'rank': 2, 'name': 'MAX_P', 'score': 4500 }, { 'rank': 3, 'name': 'RUNC', 'score': 4000 }]" %}{% endcomponent %}
                 </section>
             </div>
 

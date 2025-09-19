@@ -60,6 +60,11 @@ INSTALLED_APPS = [
     "django_celery_beat",
 ]
 
+COMPONENT_APPS = [
+    "core",
+    "social",
+]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",

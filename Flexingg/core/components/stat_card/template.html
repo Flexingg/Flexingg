@@ -1,33 +1,138 @@
 {% load humanize %}
-<div class="space-y-4">
-    <h3 class="font-pixel text-lg text-center text-[#00f5d4]">TODAY'S LOG</h3>
-    <div class="grid grid-cols-2 gap-4">
+<div class="swipe-container space-y-4 overflow-hidden">
+    <div class="flex items-center justify-center space-x-2 mb-2">
+        <button type="button" id="calendar-btn" class="pixel-button p-2">📅</button>
+        <input type="date" id="date-picker" class="font-pixel pixel-border bg-[#2a2a2a] text-white rounded px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;">
+    </div>
+    <h3 id="log-header" class="font-pixel text-lg text-center text-[#00f5d4]">{% if todays_date %}{{ todays_date|date:"M d, Y" }}{% else %}Today's Log{% endif %}</h3>
+    <div id="stats-grid" class="grid grid-cols-2 gap-4">
         <!-- Cardio Stats -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
             <p class="font-pixel text-sm text-cyan-300">CARDIO</p>
-            <p class="font-pixel text-2xl text-white mt-2">{{ todays_total_calories|default:0|intcomma }}</p>
+            <p id="calories-value" class="font-pixel text-2xl text-white mt-2">{{ todays_total_calories|default:0|intcomma }}</p>
             <p class="text-xs text-gray-400">KCAL BURNED</p>
         </div>
 
         <!-- Weightlifting Stats -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
             <p class="font-pixel text-sm text-red-400">LIFTING</p>
-            <p class="font-pixel text-2xl text-white mt-2">{{ todays_lifting_volume_k }}k lbs</p>
+            <p id="volume-value" class="font-pixel text-2xl text-white mt-2">{{ todays_lifting_volume_k }}k lbs</p>
             <p class="text-xs text-gray-400">Total Volume</p>
         </div>
 
         <!-- Cardio Steps -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
             <p class="font-pixel text-sm text-cyan-300">STEPS</p>
-            <p id="todays-steps-display" class="font-pixel text-2xl text-white mt-2">{{ todays_steps|default:0|intcomma }}</p>
+            <p id="steps-value" class="font-pixel text-2xl text-white mt-2">{{ todays_steps|default:0|intcomma }}</p>
             <p class="text-xs text-gray-400">STEPS TODAY</p>
         </div>
 
         <!-- Consumed Calories -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
             <p class="font-pixel text-sm text-red-400">CALORIES</p>
-            <p class="font-pixel text-2xl text-white mt-2">{{ todays_consumed_calories|default:0|intcomma }}</p>
+            <p id="consumed-value" class="font-pixel text-2xl text-white mt-2">{{ todays_consumed_calories|default:0|intcomma }}</p>
             <p class="text-xs text-gray-400">KCAL CONSUMED</p>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const apiUrl = '{% url "fitness:stats_api" %}';
+    const today = new Date().toISOString().split('T')[0];
+    const datePicker = document.getElementById('date-picker');
+    const calendarBtn = document.getElementById('calendar-btn');
+    const logHeader = document.getElementById('log-header');
+    const statsGrid = document.getElementById('stats-grid');
+    let earliestDate = today;
+    let currentDate = today;
+
+    // Initial load: fetch earliest and today's stats
+    async function initStats() {
+        try {
+            const response = await fetch(`${apiUrl}?earliest=true`);
+            if (!response.ok) throw new Error('API error');
+            const data = await response.json();
+            earliestDate = data.earliest_date;
+            datePicker.min = earliestDate;
+            datePicker.max = today;
+            datePicker.value = today;
+            updateDisplay(data);
+        } catch (error) {
+            console.error('Init stats error:', error);
+            // Fallback to server-side values
+            updateDisplayFromServer();
+        }
+    }
+
+    function updateDisplay(data) {
+        document.getElementById('calories-value').textContent = data.calories.toLocaleString();
+        document.getElementById('steps-value').textContent = data.steps.toLocaleString();
+        document.getElementById('volume-value').textContent = data.volume_k + 'k lbs';
+        document.getElementById('consumed-value').textContent = data.consumed.toLocaleString();
+        logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        currentDate = data.date;
+    }
+
+    async function fetchStats(date) {
+        try {
+            const response = await fetch(`${apiUrl}?date=${date}`);
+            if (!response.ok) throw new Error('API error');
+            const data = await response.json();
+            updateDisplay(data);
+        } catch (error) {
+            console.error('Fetch stats error:', error);
+        }
+    }
+
+    function updateDisplayFromServer() {
+        // Use server-side values for initial load if API fails
+        logHeader.textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // Date picker change
+    datePicker.addEventListener('change', (e) => {
+        if (e.target.value < earliestDate) {
+            e.target.value = earliestDate;
+        }
+        fetchStats(e.target.value);
+    });
+
+    // Calendar button click
+    calendarBtn.addEventListener('click', () => {
+        datePicker.showPicker();
+    });
+
+    // Swipe functionality
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    statsGrid.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    });
+
+    statsGrid.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    });
+
+    function handleSwipe() {
+        const swipeThreshold = 50;
+        const diff = touchStartX - touchEndX;
+        const nextDate = new Date(currentDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+        const prevDate = new Date(currentDate);
+        prevDate.setDate(prevDate.getDate() - 1);
+
+        if (diff > swipeThreshold && prevDate >= earliestDate) {
+            // Swipe left - previous day
+            fetchStats(prevDate.toISOString().split('T')[0]);
+        } else if (diff < -swipeThreshold && nextDate <= new Date(today)) {
+            // Swipe right - next day
+            fetchStats(nextDate.toISOString().split('T')[0]);
+        }
+    }
+
+    initStats();
+});
+</script>
