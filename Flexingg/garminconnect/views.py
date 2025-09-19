@@ -14,6 +14,8 @@ from garth.sso import exchange
 from garth.exc import GarthException, GarthHTTPError
 from .tasks import garmin_sync_steps_task, garmin_sync_activities_task
 from .utils import configure_garmin_client, refresh_oauth2_only
+from core.models import Transaction
+from decimal import Decimal
 from datetime import datetime
 from datetime import timezone as dt_timezone
 import logging
@@ -224,7 +226,6 @@ def perform_garmin_sync_activities(user, limit=500, start_date=None, end_date=No
 
                 # Integrate CardioCoin rewards
                 if obj.calories and obj.calories > 0:
-                    from ..core.models import Transaction
                     if not Transaction.objects.filter(
                         user=user,
                         currency_type='cardio_coins',

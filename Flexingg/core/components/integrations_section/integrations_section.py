@@ -22,3 +22,4 @@ class IntegrationsSection(component.Component):
 
     class Media:
         css = "integrations_section/style.css"
+        js = ("integrations_section/script.js",)

@@ -63,7 +63,6 @@ class UserProfile(AbstractUser):
 
 
     def earn_gym_gems(self, amount, garmin_activity=None) -> None:
-        from .models import Transaction
         Transaction.objects.create(
             user=self,
             currency_type='gym_gems',
@@ -73,8 +72,7 @@ class UserProfile(AbstractUser):
         self.gym_gems += amount
         self.save()
 
-    def earn_cardio_coins(self, amount, garmin_activity=None) -> None: 
-        from .models import Transaction
+    def earn_cardio_coins(self, amount, garmin_activity=None) -> None:
         Transaction.objects.create(
             user=self,
             currency_type='cardio_coins',
