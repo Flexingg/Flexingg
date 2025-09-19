@@ -8,6 +8,12 @@ services:
       - stack.env
     ports:
       - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:6
@@ -16,34 +22,23 @@ services:
       - flexingg_redis_data:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   web:
     build: .
     container_name: flexingg_web
     command: >
-      bash -c '
-        wait_for_port() {
-          local port=$$1
-          local host=$$2
-          echo "Waiting for port $$port on $$host..."
-          timeout=30
-          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
-            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
-            sleep 1
-            timeout=$$((timeout-1))
-          done
-          if [ $$timeout -eq 0 ]; then
-            echo "Timeout waiting for port $$port on $$host"
-            exit 1
-          fi
-        }
-        wait_for_port 5432 db
-        wait_for_port 6379 redis
-        python /app/Flexingg/manage.py makemigrations
-        python /app/Flexingg/manage.py migrate
-        python /app/Flexingg/manage.py collectstatic --noinput
+      bash -c "
+        python /app/Flexingg/manage.py makemigrations &&
+        python /app/Flexingg/manage.py migrate &&
+        python /app/Flexingg/manage.py collectstatic --noinput &&
         gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application
-      '
+      "
     volumes:
       - .:/app
       - ./media:/app/Flexingg/media
@@ -53,10 +48,12 @@ services:
       - stack.env
     working_dir: /app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 60s
       timeout: 30s
       retries: 5
@@ -65,27 +62,7 @@ services:
   celery:
     build: .
     container_name: flexingg_celery_worker
-    command: >
-      bash -c '
-        wait_for_port() {
-          local port=$$1
-          local host=$$2
-          echo "Waiting for port $$port on $$host..."
-          timeout=30
-          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
-            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
-            sleep 1
-            timeout=$$((timeout-1))
-          done
-          if [ $$timeout -eq 0 ]; then
-            echo "Timeout waiting for port $$port on $$host"
-            exit 1
-          fi
-        }
-        wait_for_port 5432 db
-        wait_for_port 6379 redis
-        celery -A flexingg worker -l info
-      '
+    command: celery -A flexingg worker -l info
     volumes:
       - .:/app
     env_file:
@@ -94,33 +71,15 @@ services:
       - PYTHONPATH=/app
     working_dir: /app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   celery-beat:
     build: .
     container_name: flexingg_celery_beat
-    command: >
-      bash -c '
-        wait_for_port() {
-          local port=$$1
-          local host=$$2
-          echo "Waiting for port $$port on $$host..."
-          timeout=30
-          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
-            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
-            sleep 1
-            timeout=$$((timeout-1))
-          done
-          if [ $$timeout -eq 0 ]; then
-            echo "Timeout waiting for port $$port on $$host"
-            exit 1
-          fi
-        }
-        wait_for_port 5432 db
-        wait_for_port 6379 redis
-        celery -A flexingg beat -l info
-      '
+    command: celery -A flexingg beat -l info
     volumes:
       - .:/app
     env_file:
@@ -129,8 +88,10 @@ services:
       - PYTHONPATH=/app
     working_dir: /app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
