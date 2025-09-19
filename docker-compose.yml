@@ -21,29 +21,16 @@ services:
     build: .
     container_name: flexingg_web
     command: >
-      bash -c '
-        wait_for_port() {
-          local port=$$1
-          local host=$$2
-          echo "Waiting for port $$port on $$host..."
-          timeout=30
-          while ! nc -z $$host $$port && [ $$timeout -gt 0 ]; do
-            echo "Port $$port on $$host is still not available, waiting... ($$timeout seconds left)"
-            sleep 1
-            timeout=$$((timeout-1))
-          done
-          if [ $$timeout -eq 0 ]; then
-            echo "Timeout waiting for port $$port on $$host"
-            exit 1
-          fi
-        }
-        wait_for_port 5432 db
-        wait_for_port 6379 redis
-        python /app/Flexingg/manage.py makemigrations
-        python /app/Flexingg/manage.py migrate
-        python /app/Flexingg/manage.py collectstatic --noinput
+      bash -c "
+        echo 'Debug: Contents of /app'
+        ls -la /app
+        echo 'Debug: Contents of /app/Flexingg (if exists)'
+        ls -la /app/Flexingg || echo 'Flexingg dir not found'
+        python /app/Flexingg/manage.py makemigrations &&
+        python /app/Flexingg/manage.py migrate &&
+        python /app/Flexingg/manage.py collectstatic --noinput &&
         gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application
-      '
+      "
     volumes:
       - .:/app
       - ./media:/app/Flexingg/media
