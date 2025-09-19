@@ -11,7 +11,7 @@ services:
   web:
     build: .
     command: >
-      sh -c "cd Flexingg &&
+      sh -c "cd /app/Flexingg &&
              python manage.py makemigrations &&
              python manage.py migrate &&
              gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application"
@@ -31,7 +31,7 @@ services:
   celery:
     build: .
     command: >
-      sh -c "cd Flexingg &&
+      sh -c "cd /app/Flexingg &&
              celery -A celery_app worker -l info"
     volumes:
       - .:/app
@@ -44,7 +44,7 @@ services:
   celery-beat:
     build: .
     command: >
-      sh -c "cd Flexingg &&
+      sh -c "cd /app/Flexingg &&
              celery -A celery_app beat -l info"
     volumes:
       - .:/app
