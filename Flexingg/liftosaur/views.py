@@ -6,6 +6,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from .models import *
+from core.models import ConnectedService
 from .tasks import *
 import logging
 # --- Helper Functions ---
@@ -103,6 +104,14 @@ def SaveLiftosaurTokenView(request):
             if user_id:
                 request.user.liftosaur_user_id = str(user_id)
                 request.user.save()
+
+                # Create or update the ConnectedService
+                ConnectedService.objects.update_or_create(
+                    user=request.user,
+                    service_name='liftosaur',
+                    defaults={'auth_data': {'user_id': str(user_id), 'session_token': token}}
+                )
+
                 return JsonResponse({'status': 'success', 'message': 'Token saved and Liftosaur connected successfully!'})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Token valid but could not fetch user ID'})
