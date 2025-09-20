@@ -81,7 +81,15 @@ class HCGatewayClient:
         """
         if not self.token or not self.expiry:
             return False
-        return timezone.now() < self.expiry
+
+        # Ensure both datetimes are timezone-aware for proper comparison
+        now = timezone.now()
+        if self.expiry.tzinfo is None:
+            expiry_aware = timezone.make_aware(self.expiry)
+        else:
+            expiry_aware = self.expiry
+
+        return now < expiry_aware
 
     def _ensure_auth(self):
         """
@@ -118,7 +126,13 @@ class HCGatewayClient:
         results = {}
         query = None
         if start_date:
-            iso_start = start_date.isoformat() + 'Z'
+            # Ensure start_date is timezone-aware and convert to UTC for proper comparison
+            if start_date.tzinfo is None:
+                start_date = timezone.make_aware(start_date)
+            # Convert to UTC and format as ISO string with Z suffix
+            from datetime import timezone as dt_timezone
+            utc_start = start_date.astimezone(dt_timezone.utc)
+            iso_start = utc_start.isoformat().replace('+00:00', 'Z')
             query = {"start": {"$gte": iso_start}}
         for method in self.METHODS:
             try:
