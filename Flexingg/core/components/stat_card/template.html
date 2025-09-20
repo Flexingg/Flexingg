@@ -4,7 +4,6 @@
         <button type="button" id="calendar-btn" class="pixel-button p-2">📅</button>
         <input type="date" id="date-picker" class="font-pixel pixel-border bg-[#2a2a2a] text-white rounded px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;">
     </div>
-    <h3 id="log-header" class="font-pixel text-lg text-center text-[#00f5d4]">{% if todays_date %}{{ todays_date|date:"M d, Y" }}{% else %}Today's Log{% endif %}</h3>
     <div id="stats-grid" class="grid grid-cols-2 gap-4">
         <!-- Cardio Stats -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">

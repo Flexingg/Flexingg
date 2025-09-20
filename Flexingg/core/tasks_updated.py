@@ -18,34 +18,16 @@ from .utils import liftosaur_download
 
 logger = logging.getLogger(__name__)
 
-def normalize_garmin_activity_to_workout(activity):
-    # Handle case where startTimeGMT might be a string or timestamp
-    start_time_gmt = activity.get('startTimeGMT')
-    start_time = None
 
+def normalize_garmin_activity_to_workout(activity):
+    # Handle case where startTimeGMT might be a string
+    start_time_gmt = activity.get('startTimeGMT')
     if isinstance(start_time_gmt, str):
-        # Try to parse as datetime string first (format: "2023-11-23 09:36:51")
         try:
-            # Handle both formats: "2023-11-23 09:36:51" and "2023-11-23T09:36:51"
-            if 'T' in start_time_gmt:
-                start_time = datetime.fromisoformat(start_time_gmt.replace('Z', '+00:00'))
-            else:
-                start_time = datetime.strptime(start_time_gmt, '%Y-%m-%d %H:%M:%S')
-            start_time = timezone.make_aware(start_time)
+            start_time_gmt = float(start_time_gmt)
         except (ValueError, TypeError):
-            # If datetime parsing fails, try as Unix timestamp
-            try:
-                start_time_gmt = float(start_time_gmt)
-                start_time = timezone.make_aware(datetime.fromtimestamp(start_time_gmt / 1000))
-            except (ValueError, TypeError):
-                logger.error(f"Failed to parse startTimeGMT '{start_time_gmt}' (type: {type(start_time_gmt)}) for activity {activity.get('activityId')}. Raw activity data: {activity}")
-                return None
-    elif isinstance(start_time_gmt, (int, float)):
-        # Handle Unix timestamp
-        start_time = timezone.make_aware(datetime.fromtimestamp(start_time_gmt / 1000))
-    else:
-        logger.error(f"Unknown startTimeGMT type: {type(start_time_gmt)} for activity {activity.get('activityId')}. Value: {start_time_gmt}. Raw activity data: {activity}")
-        return None
+            logger.warning(f"Invalid startTimeGMT format: {start_time_gmt} for activity {activity.get('activityId')}")
+            return None
 
     # Handle duration as well
     duration = activity.get('duration', 0)
@@ -55,18 +37,10 @@ def normalize_garmin_activity_to_workout(activity):
         except (ValueError, TypeError):
             logger.warning(f"Invalid duration format: {duration} for activity {activity.get('activityId')}")
             duration = 0
-
-    # Calculate end time
-    if duration and duration > 0:
-        end_time = start_time + timedelta(seconds=duration)
-    else:
-        # Fallback: assume 1 hour duration if not provided
-        end_time = start_time + timedelta(hours=1)
-
     return {
         'source_id': activity.get('activityId'),
-        'start_time': start_time,
-        'end_time': end_time,
+        'start_time': timezone.make_aware(datetime.fromtimestamp(activity.get('startTimeGMT') / 1000)),
+        'end_time': timezone.make_aware(datetime.fromtimestamp((activity.get('startTimeGMT') + activity.get('duration') * 1000) / 1000)),
         'data': activity
     }
 
@@ -356,87 +330,139 @@ def sync_user_data(user_id):
         logger.error(f"Error fetching Liftosaur data: {e}")
         liftosaur_data = {}
 
-    # 4. Process and save data in priority order
+    # 4. Process and save data with conflict detection
     for data_type in ['workout', 'sleep', 'steps']:
         if data_type not in priorities_by_type:
             logger.warning(f"No priorities set for {data_type} for user {user.username}; skipping.")
             continue
-        filled_dates = set()
+
+        # Initialize conflict detection for workouts
+        if data_type == 'workout':
+            conflict_detector = ConflictDetector(user)
+            conflict_resolver = ConflictResolver(user)
+
         for source in priorities_by_type[data_type]:
             if data_type == 'workout':
                 if source == 'garmin':
                     for activity in garmin_activities:
                         norm = normalize_garmin_activity_to_workout(activity)
                         if norm:
-                            # Allow multiple Garmin activities per day - no date filtering
-                            Workout.objects.update_or_create(user=user, source='garmin', source_id=norm['source_id'], defaults=norm)
+                            # Check for conflicts with existing workouts
+                            existing_workouts = Workout.objects.filter(
+                                user=user,
+                                start_time__date=norm['start_time'].date()
+                            )
+                            conflicts = conflict_detector.detect_conflicts(norm, existing_workouts)
+
+                            if conflicts:
+                                # Resolve conflicts by archiving lower priority workouts
+                                for conflict in conflicts:
+                                    existing_workout = next(w for w in existing_workouts if w.source != source)
+                                    conflict_resolver.resolve_conflicts(existing_workout, [existing_workout])
+
+                            # Save the new workout
+                            workout, created = Workout.objects.update_or_create(
+                                user=user,
+                                source='garmin',
+                                source_id=norm['source_id'],
+                                defaults=norm
+                            )
+                            logger.info(f"{'Created' if created else 'Updated'} workout from {source} for user {user.username}")
+
                 elif source == 'liftosaur' and liftosaur_data:
-                     for workout in liftosaur_data.get('storage', {}).get('history', []):
+                    for workout in liftosaur_data.get('storage', {}).get('history', []):
                         norm = normalize_liftosaur_workout(workout)
-                        if norm['start_time'].date() not in filled_dates:
-                            Workout.objects.update_or_create(user=user, source='liftosaur', source_id=norm['source_id'], defaults=norm)
-                            filled_dates.add(norm['start_time'].date())
+                        if norm:
+                            # Check for conflicts with existing workouts
+                            existing_workouts = Workout.objects.filter(
+                                user=user,
+                                start_time__date=norm['start_time'].date()
+                            )
+                            conflicts = conflict_detector.detect_conflicts(norm, existing_workouts)
+
+                            if conflicts:
+                                # Resolve conflicts by archiving lower priority workouts
+                                for conflict in conflicts:
+                                    existing_workout = next(w for w in existing_workouts if w.source != source)
+                                    conflict_resolver.resolve_conflicts(existing_workout, [existing_workout])
+
+                            # Save the new workout
+                            workout, created = Workout.objects.update_or_create(
+                                user=user,
+                                source='liftosaur',
+                                source_id=norm['source_id'],
+                                defaults=norm
+                            )
+                            logger.info(f"{'Created' if created else 'Updated'} workout from {source} for user {user.username}")
+
                 elif source == 'healthconnect' and 'exerciseSession' in hc_data:
                     for exercise in hc_data['exerciseSession']:
                         norm = normalize_hc_workout(exercise)
-                        if norm and norm['start_time'].date() not in filled_dates:
-                            Workout.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
-                            filled_dates.add(norm['start_time'].date())
+                        if norm:
+                            # Check for conflicts with existing workouts
+                            existing_workouts = Workout.objects.filter(
+                                user=user,
+                                start_time__date=norm['start_time'].date()
+                            )
+                            conflicts = conflict_detector.detect_conflicts(norm, existing_workouts)
+
+                            if conflicts:
+                                # Resolve conflicts by archiving lower priority workouts
+                                for conflict in conflicts:
+                                    existing_workout = next(w for w in existing_workouts if w.source != source)
+                                    conflict_resolver.resolve_conflicts(existing_workout, [existing_workout])
+
+                            # Save the new workout
+                            workout, created = Workout.objects.update_or_create(
+                                user=user,
+                                source='healthconnect',
+                                source_id=norm['source_id'],
+                                defaults=norm
+                            )
+                            logger.info(f"{'Created' if created else 'Updated'} workout from {source} for user {user.username}")
+
             elif data_type == 'sleep':
                 if source == 'healthconnect' and 'sleepSession' in hc_data:
                     for sleep_session in hc_data['sleepSession']:
                         norm = normalize_hc_sleep(sleep_session)
-                        if norm and norm['start_time'].date() not in filled_dates:
-                            Sleep.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
-                            filled_dates.add(norm['start_time'].date())
+                        if norm:
+                            Sleep.objects.update_or_create(
+                                user=user,
+                                source='healthconnect',
+                                source_id=norm['source_id'],
+                                defaults=norm
+                            )
+                            logger.info(f"Processed sleep data from {source} for user {user.username}")
+
             elif data_type == 'steps':
                 if source == 'garmin':
                     for day in garmin_steps:
                         norm = normalize_garmin_steps(day)
-                        if norm['date'] not in filled_dates:
-                            DailySteps.objects.update_or_create(user=user, source='garmin', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                            filled_dates.add(norm['date'])
+                        if norm:
+                            DailySteps.objects.update_or_create(
+                                user=user,
+                                source='garmin',
+                                date=norm['date'],
+                                defaults={'steps': norm['steps'], 'data': norm['data']}
+                            )
+                            logger.info(f"Processed steps data from {source} for user {user.username}")
                 elif source == 'healthconnect' and 'steps' in hc_data:
                     for steps_record in hc_data['steps']:
                         norm = normalize_hc_steps(steps_record)
-                        if norm and norm['date'] not in filled_dates:
-                            DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                            filled_dates.add(norm['date'])
-            logger.info(f"Processed {data_type} data from {source} for user {user.username}")
-
-    if 'sleep' in priorities_by_type:
-        filled_dates = set()
-        for source in priorities_by_type['sleep']:
-            if source == 'healthconnect' and 'sleepSession' in hc_data:
-                for sleep_session in hc_data['sleepSession']:
-                    norm = normalize_hc_sleep(sleep_session)
-                    if norm and norm['start_time'].date() not in filled_dates:
-                        Sleep.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
-                        filled_dates.add(norm['start_time'].date())
-
-    if 'steps' in priorities_by_type:
-        filled_dates = set()
-        for source in priorities_by_type['steps']:
-            if source == 'garmin':
-                for day in garmin_steps:
-                    norm = normalize_garmin_steps(day)
-                    if norm['date'] not in filled_dates:
-                        DailySteps.objects.update_or_create(user=user, source='garmin', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                        filled_dates.add(norm['date'])
-            elif source == 'healthconnect' and 'steps' in hc_data:
-                for steps_record in hc_data['steps']:
-                    norm = normalize_hc_steps(steps_record)
-                    if norm and norm['date'] not in filled_dates:
-                        DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                        filled_dates.add(norm['date'])
+                        if norm:
+                            DailySteps.objects.update_or_create(
+                                user=user,
+                                source='healthconnect',
+                                date=norm['date'],
+                                defaults={'steps': norm['steps'], 'data': norm['data']}
+                            )
+                            logger.info(f"Processed steps data from {source} for user {user.username}")
 
     # Log summary of what was processed
     total_workouts = Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_sleep = Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_steps = DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
-    workouts_from_liftosaur = Workout.objects.filter(user=user, source='liftosaur', start_time__gte=thirty_days_ago).count()
-    workouts_from_garmin = Workout.objects.filter(user=user, source='garmin', start_time__gte=thirty_days_ago).count()
-    workouts_from_hc = Workout.objects.filter(user=user, source='healthconnect', start_time__gte=thirty_days_ago).count()
-    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records in the last 30 days")
+
+    logger.info(f"Sync summary for user {user.username}: {total_workouts} workouts, {total_sleep} sleep records, {total_steps} step records saved")
 
     return f"Sync completed for user {user_id}"

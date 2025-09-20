@@ -65,6 +65,10 @@ def get_prioritized_data_source(user, data_type: str) -> Optional[str]:
     Returns the source name (e.g., 'garmin', 'healthconnect', 'liftosaur') or None if no priority set.
     """
     try:
+        # Check if user is authenticated before querying database
+        if not user or not user.is_authenticated:
+            return None
+
         priority = DataPriority.objects.filter(
             user=user,
             data_type=data_type
@@ -348,6 +352,18 @@ def get_user_fitness_summary(user, start_date: date, end_date: date) -> Dict[str
     Get a comprehensive fitness summary for a user within date range.
     Combines data from all sources using priority system where applicable.
     """
+    # Check if user is authenticated before querying database
+    if not user or not user.is_authenticated:
+        return {
+            'steps': {'total_steps': 0, 'sources': {}, 'primary_source': None, 'date_range': {'start': start_date, 'end': end_date}},
+            'weight': {'weights': [], 'sources': {}, 'total_entries': 0, 'date_range': {'start': start_date, 'end': end_date}},
+            'sleep': {'total_entries': 0, 'sources': {}, 'primary_source': None, 'date_range': {'start': start_date, 'end': end_date}},
+            'workouts': {'workouts': [], 'sources': {}, 'total_workouts': 0, 'date_range': {'start': start_date, 'end': end_date}},
+            'water': {'total_ounces': 0, 'entries': [], 'sources': {}, 'source_totals': {}, 'total_entries': 0, 'date_range': {'start': start_date, 'end': end_date}},
+            'nutrition': {'entries': [], 'sources': {}, 'total_entries': 0, 'totals': {'calories': 0, 'protein_grams': 0, 'fat_grams': 0, 'carbs_grams': 0}, 'date_range': {'start': start_date, 'end': end_date}},
+            'date_range': {'start': start_date, 'end': end_date}
+        }
+
     return {
         'steps': get_aggregated_steps(user, start_date, end_date),
         'weight': get_aggregated_body_weight(user, start_date, end_date),

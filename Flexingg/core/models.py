@@ -561,3 +561,59 @@ class BodyWeight(models.Model):
 
     def __str__(self):
         return f"Weight for {self.user.username} from {self.source}: {self.weight_lbs} lbs"
+
+
+class ArchivedWorkout(models.Model):
+    """Preserves workout data that was excluded due to conflicts"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='archived_workouts')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    duration_seconds = models.FloatField(null=True, blank=True)
+    data = models.JSONField(help_text="Original workout data before archiving")
+    archived_reason = models.CharField(max_length=100, choices=[
+        ('lower_priority', 'Lower Priority Source'),
+        ('time_conflict', 'Time Conflict'),
+        ('data_conflict', 'Data Conflict')
+    ])
+    archived_at = models.DateTimeField(auto_now_add=True)
+    linked_primary_workout = models.ForeignKey('core.Workout', on_delete=models.SET_NULL, null=True, blank=True, related_name='linked_archived_workouts')
+
+    class Meta:
+        ordering = ['-archived_at']
+        verbose_name = "Archived Workout"
+        verbose_name_plural = "Archived Workouts"
+
+    def __str__(self):
+        return f"Archived {self.source} workout for {self.user.username} on {self.start_time.date()}"
+
+
+class WorkoutConflict(models.Model):
+    """Tracks conflicts between workout data from different sources"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='workout_conflicts')
+    primary_workout = models.ForeignKey('core.Workout', on_delete=models.CASCADE, related_name='primary_conflicts')
+    archived_workout = models.ForeignKey('core.ArchivedWorkout', on_delete=models.CASCADE, related_name='archived_conflicts')
+    conflict_type = models.CharField(max_length=50, choices=[
+        ('time_overlap', 'Time Overlap'),
+        ('data_mismatch', 'Data Mismatch'),
+        ('duplicate_activity', 'Duplicate Activity')
+    ])
+    conflict_score = models.FloatField(help_text="Confidence score of the conflict (0-1)")
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_method = models.CharField(max_length=50, choices=[
+        ('auto_priority', 'Automatic Priority'),
+        ('manual_review', 'Manual Review'),
+        ('data_merge', 'Data Merge')
+    ], null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Workout Conflict"
+        verbose_name_plural = "Workout Conflicts"
+
+    def __str__(self):
+        return f"Conflict: {self.primary_workout.source} vs {self.archived_workout.source} for {self.user.username}"
