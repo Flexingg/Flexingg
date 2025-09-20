@@ -341,6 +341,49 @@ class Workout(models.Model):
     def __str__(self):
         return f"Workout for {self.user.username} from {self.source} on {self.start_time.date()}"
 
+    def get_total_volume(self, unit='lb'):
+        """
+        Calculate total volume from workout data: sum(weight × reps) for all completed sets.
+        Returns volume in specified unit (lb or kg).
+        """
+        if not self.data:
+            return 0
+
+        total_volume = 0
+        entries = self.data.get('entries', [])
+
+        for entry in entries:
+            # Process regular sets
+            sets = entry.get('sets', [])
+            for set_data in sets:
+                if set_data.get('isCompleted', False):
+                    weight = set_data.get('completedWeight', {}).get('value', 0)
+                    reps = set_data.get('completedReps', 0)
+                    if weight and reps:
+                        total_volume += weight * reps
+
+            # Process warmup sets
+            warmup_sets = entry.get('warmupSets', [])
+            for warmup_set in warmup_sets:
+                if warmup_set.get('isCompleted', False):
+                    weight = warmup_set.get('completedWeight', {}).get('value', 0)
+                    reps = warmup_set.get('completedReps', 0)
+                    if weight and reps:
+                        total_volume += weight * reps
+
+        # Convert to requested unit if needed
+        if unit == 'kg':
+            total_volume /= 2.20462
+
+        return total_volume
+
+    def get_total_volume_k(self):
+        """
+        Get total volume in thousands of pounds (for display purposes).
+        Returns volume divided by 1000.
+        """
+        return self.get_total_volume(unit='lb') / 1000
+
 
 class UnifiedWorkoutExercise(models.Model):
     """
@@ -456,3 +499,65 @@ class DailySteps(models.Model):
 
     def __str__(self):
         return f"Steps for {self.user.username} from {self.source} on {self.date}: {self.steps}"
+
+class DailyWater(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_water')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255, null=True, blank=True)
+    date = models.DateField()
+    amount_ounces = models.DecimalField(max_digits=6, decimal_places=2)
+    data = models.JSONField(help_text="Normalized water data", null=True, blank=True)
+
+    class Meta:
+        unique_together = ('user', 'source', 'date')
+        ordering = ['-date']
+        verbose_name = "Daily Water"
+        verbose_name_plural = "Daily Water Intake"
+
+    def __str__(self):
+        return f"Water for {self.user.username} from {self.source} on {self.date}: {self.amount_ounces}oz"
+
+
+class NutritionEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_nutrition')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255)
+    datetime = models.DateTimeField()
+    food_name = models.CharField(max_length=255)
+    quantity_description = models.CharField(max_length=100, null=True, blank=True)  # e.g., "5 oz"
+    quantity_grams = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    calories = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    protein_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    fat_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    carbs_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    data = models.JSONField(help_text="Normalized nutrition data", null=True, blank=True)
+
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-datetime']
+        verbose_name = "Nutrition Entry"
+        verbose_name_plural = "Nutrition Entries"
+
+    def __str__(self):
+        return f"Nutrition for {self.user.username} from {self.source}: {self.food_name} ({self.calories} cal)"
+
+
+class BodyWeight(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_weights')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255, null=True, blank=True)
+    datetime = models.DateTimeField()
+    weight_lbs = models.DecimalField(max_digits=6, decimal_places=2)
+    data = models.JSONField(help_text="Normalized weight data", null=True, blank=True)
+
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-datetime']
+        verbose_name = "Body Weight"
+        verbose_name_plural = "Body Weight Entries"
+
+    def __str__(self):
+        return f"Weight for {self.user.username} from {self.source}: {self.weight_lbs} lbs"

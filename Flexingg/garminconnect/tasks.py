@@ -244,3 +244,158 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
     except Exception as e:
         logger.error(f"Unexpected error during activities task for user {user.id}: {e}")
         return {'success': False, 'error': str(e)}
+@shared_task
+def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
+    """
+    Celery task for syncing body weight data from Garmin Connect.
+    """
+    try:
+        user = UserProfile.objects.get(id=user_id)
+        garmin_auth = Garmin_Auth.objects.get(user=user)
+    except (UserProfile.DoesNotExist, Garmin_Auth.DoesNotExist):
+        logger.error(f"No user or Garmin auth for ID {user_id}")
+        return {'success': False, 'error': 'No Garmin auth record found'}
+
+    weights_synced = 0
+
+    try:
+        # Configure client with existing tokens
+        if not configure_garmin_client(garmin_auth):
+            logger.error(f"Failed to configure Garmin client for user {user.id}")
+            return {'success': False, 'error': 'Client configuration failed'}
+
+        # Build URL for weight data
+        url = "/weight-service/user/weight"
+
+        # Fetch weight data with retry on auth error
+        weight_data = None
+        retry_count = 0
+        max_retries = 1
+        while retry_count <= max_retries and weight_data is None:
+            try:
+                weight_data = garth.client.connectapi(url)
+                logger.info(f"Successfully fetched weight data for user {user.id}.")
+            except GarthHTTPError as api_err:
+                if api_err.status_code in [401, 403]:
+                    if retry_count == 0:
+                        logger.warning(f"Auth error on weight API, attempting refresh and retry.")
+                        if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
+                            retry_count += 1
+                            continue
+                        else:
+                            logger.error(f"Token refresh failed during weight sync")
+                            return {'success': False, 'error': 'Token refresh failed after auth error'}
+                    else:
+                        logger.error(f"Retry failed after refresh for weight API")
+                        return {'success': False, 'error': 'API retry failed'}
+                else:
+                    raise
+            except Exception as api_err:
+                logger.error(f"Unexpected error on weight API: {api_err}")
+                raise
+            retry_count += 1 if weight_data is None else 0
+
+        if not weight_data:
+            logger.info(f"No weight data found for user {user.id}")
+            return {'success': True, 'weights_synced': 0}
+
+        # Process weight data
+        from .models import GarminBodyWeight
+        for weight_entry in weight_data:
+            try:
+                weight_kg = weight_entry.get('weight')
+                datetime_str = weight_entry.get('date')
+
+                if not weight_kg or not datetime_str:
+                    logger.warning(f"Skipping weight entry with missing data: {weight_entry}")
+                    continue
+
+                # Parse datetime
+                try:
+                    if isinstance(datetime_str, str):
+                        # Parse ISO format datetime string
+                        weight_datetime = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+                    else:
+                        logger.warning(f"Unexpected datetime format: {datetime_str}")
+                        continue
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid datetime format for weight entry: {datetime_str} - {e}")
+                    continue
+
+                # Create or update weight record
+                obj, created = GarminBodyWeight.objects.update_or_create(
+                    user=user,
+                    datetime=weight_datetime,
+                    defaults={
+                        'weight_kg': weight_kg,
+                        'source_type': weight_entry.get('sourceType', 'garmin_scale'),
+                        'raw_data': weight_entry
+                    }
+                )
+                if created:
+                    weights_synced += 1
+
+            except Exception as weight_err:
+                logger.error(f"Error processing weight entry for user {user.id}: {weight_err}")
+
+        # Update last sync
+        garmin_auth.last_sync = timezone.now()
+        garmin_auth.save(update_fields=['last_sync'])
+
+        return {'success': True, 'weights_synced': weights_synced}
+
+    except Exception as e:
+        logger.error(f"Unexpected error during weight sync for user {user.id}: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task
+def normalize_garmin_weight_data(user_id):
+    """
+    Normalize Garmin body weight data to unified BodyWeight model.
+    """
+    from core.models import BodyWeight
+    from .models import GarminBodyWeight
+    from django.db import transaction
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        user_weights = GarminBodyWeight.objects.filter(user_id=user_id)
+
+        normalized_count = 0
+
+        with transaction.atomic():
+            for garmin_weight in user_weights:
+                # Check if already normalized
+                if BodyWeight.objects.filter(
+                    user_id=user_id,
+                    source='garmin',
+                    source_id=str(garmin_weight.id)
+                ).exists():
+                    continue
+
+                # Convert kg to lbs
+                weight_lbs = garmin_weight.weight_kg * 2.20462
+
+                BodyWeight.objects.create(
+                    user_id=user_id,
+                    source='garmin',
+                    source_id=str(garmin_weight.id),
+                    datetime=garmin_weight.datetime,
+                    weight_lbs=weight_lbs,
+                    data={
+                        'original_weight_kg': garmin_weight.weight_kg,
+                        'source_type': garmin_weight.source_type,
+                        'garmin_raw_data': garmin_weight.raw_data
+                    }
+                )
+                normalized_count += 1
+
+        logger.info(f"Normalized {normalized_count} weight measurements for user {user_id}")
+        return {'status': 'success', 'normalized': normalized_count}
+
+    except Exception as e:
+        logger.error(f"Error normalizing Garmin weight data for user {user_id}: {str(e)}")
+        return {'status': 'error', 'message': str(e)}

@@ -92,3 +92,20 @@ class GarminActivity(models.Model):
 
     def __str__(self):  
         return f"{self.user.username} - {self.name} ({self.activity_id}) on {self.start_time_utc.date()}"
+class GarminBodyWeight(models.Model):
+    """Stores body weight data synced from Garmin Connect."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='garmin_body_weights')
+    weight_kg = models.FloatField(help_text="Weight in kilograms.")
+    datetime = models.DateTimeField(help_text="When the weight was recorded.")
+    source_type = models.CharField(max_length=50, default='garmin_scale', help_text="Source of the weight data (e.g., 'garmin_scale', 'manual_entry').")
+    raw_data = models.JSONField(null=True, blank=True, help_text="Raw JSON data from Garmin API.")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.datetime.date()}: {self.weight_kg}kg"
+
+    class Meta:
+        ordering = ['-datetime']
+        unique_together = ('user', 'datetime')  # One weight entry per user per datetime
+        verbose_name = "Garmin Body Weight"
+        verbose_name_plural = "Garmin Body Weights"

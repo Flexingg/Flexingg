@@ -20,6 +20,32 @@ def convert_timestamp_to_datetime(ts):
         return timezone.make_aware(dt)
     return timezone.now()
 
+def liftosaur_download(liftosaur_id, session_token):
+    """
+    Downloads workout data from Liftosaur API using user ID and session token.
+    Returns JSON data or None if request fails.
+    """
+    try:
+        s = requests.Session()
+        s.cookies.set('session', session_token, domain='liftosaur.com')
+
+        # Try the storage endpoint first
+        r = s.get('https://api3.liftosaur.com/api/storage')
+        if r.ok:
+            return r.json()
+
+        # If storage endpoint fails, try the user-specific endpoint
+        r = s.get(f'https://api3.liftosaur.com/api/users/{liftosaur_id}/storage')
+        if r.ok:
+            return r.json()
+
+        logger.warning(f"Failed to fetch Liftosaur data for user {liftosaur_id}: {r.status_code}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error downloading Liftosaur data for user {liftosaur_id}: {str(e)}")
+        return None
+
 # --- Main View ---
 
 @login_required

@@ -116,15 +116,19 @@
                 {% component "level_card" level=12 current_xp=750 next_level_xp=1000 progress_percentage=75 %}{% endcomponent %}
 
                 <!-- Daily Quest / Stats -->
-                <section class="space-y-4 bg-[#2a2a2a)">
-                    {% component "stat_card" todays_total_calories=todays_total_calories todays_steps=todays_steps todays_consumed_calories=todays_consumed_calories todays_lifting_volume_k=todays_lifting_volume_k todays_date=todays_date %}{% endcomponent %}
+                <section class="space-y-4 bg-[#2a2a2a]">
+                    {% component "stat_card"
+                        todays_total_calories=todays_total_calories
+                        todays_steps=todays_steps
+                        todays_consumed_calories=todays_consumed_calories
+                        todays_lifting_volume_k=todays_lifting_volume_k
+                        todays_date=todays_date
+                        fitness_summary=fitness_summary %}{% endcomponent %}
                 </section>
 
                 <!-- Competitions -->
                 <section>
-                    {% component "competitions" %}{% endcomponent %}
-
-
+                    {% component "competitions" fitness_summary=fitness_summary %}{% endcomponent %}
                 </section>
 
             <!-- Right Column -->

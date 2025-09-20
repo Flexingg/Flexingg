@@ -76,3 +76,147 @@ def healthconnect_sync_task(profile_id):
     except Exception as e:
         logger.error(f"Error during Health Connect sync for profile {profile_id}: {str(e)}")
         return {'success': False, 'error': str(e)}
+@shared_task
+def normalize_healthconnect_weight_data(user_id):
+    """
+    Extract and normalize weight data from HealthConnectData to unified BodyWeight model.
+    """
+    from core.models import BodyWeight
+    from .models import HealthConnectData
+    from django.db import transaction
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Find weight-related records in HealthConnectData
+        weight_records = HealthConnectData.objects.filter(
+            profile_id=user_id,
+            method='weight'
+        )
+
+        normalized_count = 0
+
+        with transaction.atomic():
+            for record in weight_records:
+                # Check if already normalized
+                if BodyWeight.objects.filter(
+                    user_id=user_id,
+                    source='healthconnect',
+                    source_id=record.record_id
+                ).exists():
+                    continue
+
+                # Extract weight data from JSON
+                data = record.data
+                weight_kg = data.get('weight')
+
+                if not weight_kg:
+                    logger.warning(f"No weight data in record {record.record_id}")
+                    continue
+
+                # Convert kg to lbs
+                weight_lbs = weight_kg * 2.20462
+
+                BodyWeight.objects.create(
+                    user_id=user_id,
+                    source='healthconnect',
+                    source_id=record.record_id,
+                    datetime=record.start_time,
+                    weight_lbs=weight_lbs,
+                    data={
+                        'original_weight_kg': weight_kg,
+                        'healthconnect_data': data,
+                        'app_source': record.app_source
+                    }
+                )
+                normalized_count += 1
+
+        logger.info(f"Normalized {normalized_count} weight measurements for user {user_id}")
+        return {'status': 'success', 'normalized': normalized_count}
+
+    except Exception as e:
+        logger.error(f"Error normalizing Health Connect weight data for user {user_id}: {str(e)}")
+        return {'status': 'error', 'message': str(e)}
+
+
+@shared_task
+def normalize_healthconnect_steps_data(user_id):
+    """
+    Extract and normalize steps data from HealthConnectData to unified DailySteps model.
+    """
+    from core.models import DailySteps
+    from .models import HealthConnectData
+    from django.db import transaction
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Find steps-related records in HealthConnectData
+        steps_records = HealthConnectData.objects.filter(
+            profile_id=user_id,
+            method='steps'
+        )
+
+        normalized_count = 0
+
+        with transaction.atomic():
+            for record in steps_records:
+                # Check if already normalized
+                if DailySteps.objects.filter(
+                    user_id=user_id,
+                    source='healthconnect',
+                    source_id=record.record_id
+                ).exists():
+                    continue
+
+                # Extract steps data from JSON
+                data = record.data
+                steps_count = data.get('steps')
+
+                if steps_count is None:
+                    logger.warning(f"No steps data in record {record.record_id}")
+                    continue
+
+                # Use the date part of start_time for daily aggregation
+                record_date = record.start_time.date()
+
+                # Check if we already have steps for this date from Health Connect
+                existing_steps = DailySteps.objects.filter(
+                    user=user_id,
+                    source='healthconnect',
+                    date=record_date
+                ).first()
+
+                if existing_steps:
+                    # Update existing record if new data is different
+                    if existing_steps.steps != steps_count:
+                        existing_steps.steps = steps_count
+                        existing_steps.data = {
+                            'healthconnect_data': data,
+                            'app_source': record.app_source,
+                            'record_id': record.record_id
+                        }
+                        existing_steps.save()
+                else:
+                    # Create new record
+                    DailySteps.objects.create(
+                        user_id=user_id,
+                        source='healthconnect',
+                        source_id=record.record_id,
+                        date=record_date,
+                        steps=steps_count,
+                        data={
+                            'healthconnect_data': data,
+                            'app_source': record.app_source
+                        }
+                    )
+                    normalized_count += 1
+
+        logger.info(f"Normalized {normalized_count} steps records for user {user_id}")
+        return {'status': 'success', 'normalized': normalized_count}
+
+    except Exception as e:
+        logger.error(f"Error normalizing Health Connect steps data for user {user_id}: {str(e)}")
+        return {'status': 'error', 'message': str(e)}

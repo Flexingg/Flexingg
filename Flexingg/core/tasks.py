@@ -17,7 +17,25 @@ from .utils import liftosaur_download
 
 logger = logging.getLogger(__name__)
 
+
 def normalize_garmin_activity_to_workout(activity):
+    # Handle case where startTimeGMT might be a string
+    start_time_gmt = activity.get('startTimeGMT')
+    if isinstance(start_time_gmt, str):
+        try:
+            start_time_gmt = float(start_time_gmt)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid startTimeGMT format: {start_time_gmt} for activity {activity.get('activityId')}")
+            return None
+
+    # Handle duration as well
+    duration = activity.get('duration', 0)
+    if isinstance(duration, str):
+        try:
+            duration = float(duration)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid duration format: {duration} for activity {activity.get('activityId')}")
+            duration = 0
     return {
         'source_id': activity.get('activityId'),
         'start_time': timezone.make_aware(datetime.fromtimestamp(activity.get('startTimeGMT') / 1000)),
@@ -149,9 +167,59 @@ def sync_user_data(user_id):
         logger.error(f"User with id {user_id} not found.")
         return
 
-    # 1. Get user priorities
+    # 1. Get user priorities (create defaults if none exist)
     priorities = DataPriority.objects.filter(user=user).order_by('data_type', 'rank')
     priorities_by_type = {}
+
+    # Create default priorities if none exist
+    if not priorities.exists():
+        logger.info(f"No data priorities found for user {user.username}, creating defaults")
+
+        # Workout priorities: Liftosaur primary, Garmin secondary
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='workout',
+            source='liftosaur',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='workout',
+            source='garmin',
+            defaults={'rank': 2}
+        )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='workout',
+            source='healthconnect',
+            defaults={'rank': 3}
+        )
+
+        # Sleep priorities: Health Connect primary
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='sleep',
+            source='healthconnect',
+            defaults={'rank': 1}
+        )
+
+        # Steps priorities: Garmin primary, Health Connect secondary
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='steps',
+            source='garmin',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='steps',
+            source='healthconnect',
+            defaults={'rank': 2}
+        )
+
+        # Refresh priorities after creation
+        priorities = DataPriority.objects.filter(user=user).order_by('data_type', 'rank')
+
     for p in priorities:
         if p.data_type not in priorities_by_type:
             priorities_by_type[p.data_type] = []
@@ -272,7 +340,7 @@ def sync_user_data(user_id):
                 if source == 'garmin':
                     for activity in garmin_activities:
                         norm = normalize_garmin_activity_to_workout(activity)
-                        if norm['start_time'].date() not in filled_dates:
+                        if norm and norm['start_time'].date() not in filled_dates:
                             Workout.objects.update_or_create(user=user, source='garmin', source_id=norm['source_id'], defaults=norm)
                             filled_dates.add(norm['start_time'].date())
                 elif source == 'liftosaur' and liftosaur_data:
@@ -334,5 +402,12 @@ def sync_user_data(user_id):
                     if norm and norm['date'] not in filled_dates:
                         DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
                         filled_dates.add(norm['date'])
+
+    # Log summary of what was processed
+    total_workouts = Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
+    total_sleep = Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
+    total_steps = DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
+
+    logger.info(f"Sync summary for user {user.username}: {total_workouts} workouts, {total_sleep} sleep records, {total_steps} step records saved")
 
     return f"Sync completed for user {user_id}"

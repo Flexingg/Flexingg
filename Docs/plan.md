@@ -1,96 +1,250 @@
-# Data Normalization and Synchronization Plan
+# Data Normalization and Aggregation Plan
 
-This document outlines the plan to create a unified data normalization and synchronization system for integrating data from Garmin Connect, Health Connect, and Liftosaur.
+## Overview
+This plan outlines the implementation of normalized data methods for fitness data sources (Garmin, HealthConnect, Liftosaur) to feed into the core app, along with aggregation methods for useful data retrieval.
 
-## 1. Database Model Changes
+## Current State Analysis
 
-The first step is to refactor the database models to support the new synchronization logic.
+### Existing Core Models
+- ✅ `Workout` - unified workout data
+- ✅ `UnifiedWorkoutExercise` - exercises within workouts
+- ✅ `UnifiedWorkoutSet` - sets within exercises
+- ✅ `Sleep` - unified sleep data
+- ✅ `DailySteps` - unified steps data
+- ✅ `DataPriority` - system for choosing data sources
 
-### 1.1. `ConnectedService` Model
-Create a new model to store authentication tokens and other details for each service a user connects. This will centralize connection information.
+### Existing Integration Status
 
--   `user`: ForeignKey to `UserProfile`
--   `service_name`: CharField (e.g., 'garmin', 'healthconnect', 'liftosaur')
--   `auth_data`: JSONField to store tokens and other auth-related data.
+#### Garmin Connect
+- ✅ Steps sync task (`garmin_sync_steps_task`)
+- ✅ Activities sync task (`garmin_sync_activities_task`)
+- ✅ Models: `GarminDailySteps`, `GarminActivity`
+- ❌ Missing: Sleep, Water, Weight sync methods
+- ❌ Missing: Normalization to unified models
 
-### 1.2. `DataPriority` Model
-Create a model to store the user's preferred data source for each data type.
+#### Health Connect
+- ✅ Generic sync task (`healthconnect_sync_task`)
+- ✅ Model: `HealthConnectData` (stores all data in JSONField)
+- ❌ Missing: Specific data type extraction
+- ❌ Missing: Normalization to unified models
 
--   `user`: ForeignKey to `UserProfile`
--   `data_type`: CharField (e.g., 'workout', 'sleep', 'steps')
--   `source`: CharField (e.g., 'garmin', 'healthconnect', 'liftosaur')
--   `rank`: IntegerField for priority (1 is the highest).
+#### Liftosaur
+- ✅ Workout sync task (`sync_liftosaur_data`)
+- ✅ Already normalizes to unified `Workout`/`UnifiedWorkoutExercise`/`UnifiedWorkoutSet`
+- ✅ Model: `BodyMeasurement` for weight data
+- ❌ Missing: Sleep, Steps, Activities sync methods
 
-### 1.3. Unified Data Models
-Create new, simplified models for each data type. These will replace the service-specific models.
+## Implementation Plan
 
--   **`Workout` model:**
-    -   `user`: ForeignKey to `UserProfile`
-    -   `source`: CharField (e.g., 'garmin', 'liftosaur')
-    -   `source_id`: CharField (unique ID from the source service)
-    -   `start_time`: DateTimeField
-    -   `end_time`: DateTimeField
-    -   `data`: JSONField to store the normalized workout data.
--   **`Sleep` model:**
-    -   `user`: ForeignKey to `UserProfile`
-    -   `source`: CharField
-    -   `source_id`: CharField
-    -   `start_time`: DateTimeField
-    -   `end_time`: DateTimeField
-    -   `data`: JSONField
--   **`Steps` model:**
-    -   `user`: ForeignKey to `UserProfile`
-    -   `source`: CharField
-    -   `source_id`: CharField
-    -   `date`: DateField
-    -   `steps`: IntegerField
+### Phase 1: Missing Data Models
 
-These new models will likely be created in the `core` app (`Flexingg/core/models.py`). The old models in `garminconnect`, `healthconnect`, and `liftosaur` will be deprecated and eventually removed.
+#### 1.1 Water Intake Model
+```python
+class DailyWater(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_water')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255, null=True, blank=True)
+    date = models.DateField()
+    amount_ounces = models.DecimalField(max_digits=6, decimal_places=2)
+    data = models.JSONField(help_text="Normalized water data", null=True, blank=True)
 
-## 2. Manual Synchronization Logic
+    class Meta:
+        unique_together = ('user', 'source', 'date')
+        ordering = ['-date']
+```
 
-Implement the user-facing trigger for the data sync.
+#### 1.2 Nutrition Model
+```python
+class NutritionEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_nutrition')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255)
+    datetime = models.DateTimeField()
+    food_name = models.CharField(max_length=255)
+    quantity_description = models.CharField(max_length=100, null=True, blank=True)  # e.g., "5 oz"
+    quantity_grams = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    calories = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    protein_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    fat_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    carbs_grams = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    data = models.JSONField(help_text="Normalized nutrition data", null=True, blank=True)
 
-### 2.1. Sync Button and View
--   Add a "Sync My Data" button to the user settings page (`settings.html`).
--   Create a new Django view `sync_data_view` in `Flexingg/core/views.py`.
--   This view will trigger a Celery task to perform the sync in the background for the logged-in user.
--   Add a URL for this view in `Flexingg/core/urls.py`.
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-datetime']
+```
 
-### 2.2. Celery Task
--   Create a new Celery task `sync_user_data(user_id)` in `Flexingg/core/tasks.py`.
--   This task will contain the core synchronization logic.
+#### 1.3 Body Weight Model
+```python
+class BodyWeight(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='unified_weights')
+    source = models.CharField(max_length=50)
+    source_id = models.CharField(max_length=255, null=True, blank=True)
+    datetime = models.DateTimeField()
+    weight_lbs = models.DecimalField(max_digits=6, decimal_places=2)
+    data = models.JSONField(help_text="Normalized weight data", null=True, blank=True)
 
-## 3. The "Overwrite" Synchronization Process
+    class Meta:
+        unique_together = ('user', 'source', 'source_id')
+        ordering = ['-datetime']
+```
 
-This is the core logic that will run inside the `sync_user_data` Celery task.
+### Phase 2: Data Normalization Methods
 
-### 3.1. Get User Priorities
--   Fetch the user's data source priorities from the `DataPriority` model.
+#### 2.1 Garmin Connect Normalization
+- **Steps**: Already exists → `DailySteps`
+- **Activities**: Create normalization method → `Workout` (for cardio activities)
+- **Sleep**: Create sync task and normalization → `Sleep`
+- **Water**: Create sync task and normalization → `DailyWater`
+- **Weight**: Create sync task and normalization → `BodyWeight`
 
-### 3.2. Delete Old Data
--   For each data type (workouts, sleep, etc.), delete all existing records for the user within the last 30 days from the new unified models.
+#### 2.2 Health Connect Normalization
+- **Steps**: Extract from `HealthConnectData` → `DailySteps`
+- **Activities**: Extract from `HealthConnectData` → `Workout`
+- **Sleep**: Extract from `HealthConnectData` → `Sleep`
+- **Weight**: Extract from `HealthConnectData` → `BodyWeight`
+- **Nutrition**: Extract from `HealthConnectData` → `NutritionEntry`
+- **Water**: Extract from `HealthConnectData` → `DailyWater`
 
-### 3.3. Fetch Fresh Data
--   Fetch the last 30 days of data from all of the user's connected services using the credentials stored in the `ConnectedService` model.
+#### 2.3 Liftosaur Normalization
+- **Workout**: Already exists → unified models
+- **Weight**: Extract from `BodyMeasurement` → `BodyWeight`
+- **Steps**: Create sync task and normalization → `DailySteps`
+- **Activities**: Create sync task and normalization → `Workout`
+- **Sleep**: Create sync task and normalization → `Sleep`
 
-### 3.4. Process and Save in Priority Order
--   Create an in-memory set, `filled_dates`, to track which dates have already been filled by a higher-priority source for a given data type.
--   Loop through the data sources in their priority order (rank 1, then rank 2, etc.).
--   For each data item (e.g., a workout):
-    -   Normalize the data into the format for the unified models.
-    -   Check if the date of the item is already in `filled_dates`.
-    -   If the date is **not** in `filled_dates`:
-        -   Save the normalized data to the appropriate unified model using `update_or_create` with `user`, `source`, and `source_id`.
-        -   Add the date to `filled_dates`.
-    -   If the date **is** in `filled_dates`, discard the item.
+### Phase 3: Core App Aggregation Methods
 
-## 4. Testing
+#### 3.1 Date Range Aggregation
+```python
+# Core aggregation methods to be created
+def get_aggregated_steps(user, start_date, end_date):
+    """Get total steps from prioritized sources"""
 
--   Create unit tests for the normalization functions.
--   Manually test the "Sync My Data" button and verify that the data is correctly fetched, prioritized, and saved in the new unified models.
--   Verify that old data is correctly deleted.
+def get_aggregated_workouts(user, start_date, end_date):
+    """Get workouts from all sources"""
 
-## 5. Code Cleanup
+def get_aggregated_sleep(user, start_date, end_date):
+    """Get sleep data from prioritized sources"""
 
--   Once the new system is stable, the old data models in the service-specific apps (`garminconnect`, `healthconnect`, `liftosaur`) can be removed, along with their associated views and tasks that are no longer needed. This might be a separate follow-up task.
+def get_aggregated_water(user, start_date, end_date):
+    """Get water intake from all sources"""
+
+def get_aggregated_nutrition(user, start_date, end_date):
+    """Get nutrition data from all sources"""
+
+def get_aggregated_weight(user, start_date, end_date):
+    """Get weight measurements from all sources"""
+```
+
+#### 3.2 Data Prioritization Integration
+- Use existing `DataPriority` model to determine which source to use for each data type
+- Implement fallback logic when primary source unavailable
+- Create methods to resolve conflicts when multiple sources have data for same time period
+
+### Phase 4: Sync Task Enhancements
+
+#### 4.1 Garmin Connect Tasks
+- Create `garmin_sync_sleep_task()`
+- Create `garmin_sync_water_task()`
+- Create `garmin_sync_weight_task()`
+- Enhance `garmin_sync_activities_task()` to normalize to unified models
+
+#### 4.2 Health Connect Tasks
+- Create `healthconnect_normalize_data_task()` to extract specific data types
+- Enhance existing sync to call normalization after fetching raw data
+
+#### 4.3 Liftosaur Tasks
+- Create `liftosaur_sync_steps_task()`
+- Create `liftosaur_sync_activities_task()`
+- Create `liftosaur_sync_sleep_task()`
+- Enhance existing sync to normalize weight data
+
+## Implementation Priority
+
+### High Priority (Core Functionality)
+1. **Weight normalization** - All sources have this data
+2. **Sleep normalization** - Critical for health tracking
+3. **Activity normalization** - Core fitness metric
+4. **Steps normalization** - Already partially implemented
+
+### Medium Priority (Quality of Life)
+5. **Water intake normalization** - Important for health tracking
+6. **Nutrition normalization** - Important for diet tracking
+
+### Low Priority (Advanced Features)
+7. **Enhanced aggregation methods** - Date range filtering, advanced analytics
+8. **Conflict resolution** - When multiple sources have conflicting data
+
+## Data Flow Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Garmin API    │    │ Health Connect   │    │  Liftosaur API  │
+│                 │    │ Gateway          │    │                 │
+└─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Garmin Models   │    │ HealthConnectData│    │ Liftosaur Models│
+│ (Raw Data)      │    │ (JSON Storage)   │    │ (Structured)    │
+└─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Normalization   │    │ Data Extraction  │    │ Normalization   │
+│ Methods         │    │ & Normalization  │    │ Methods         │
+└─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Unified Core    │    │ Unified Core     │    │ Unified Core    │
+│ Models          │    │ Models           │    │ Models          │
+│                 │    │                  │    │                 │
+│ • DailySteps    │    │ • DailySteps     │    │ • DailySteps    │
+│ • Workout       │    │ • Workout        │    │ • Workout       │
+│ • Sleep         │    │ • Sleep          │    │ • Sleep         │
+│ • BodyWeight    │    │ • BodyWeight     │    │ • BodyWeight    │
+│ • DailyWater    │    │ • DailyWater     │    │ • DailyWater    │
+│ • NutritionEntry│    │ • NutritionEntry │    │ • NutritionEntry│
+└─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Data Priority   │    │ Data Priority    │    │ Data Priority   │
+│ Resolution      │    │ Resolution       │    │ Resolution      │
+└─────────┬───────┘    └────────┬─────────┘    └───────┬─────────┘
+          │                     │                      │
+          ▼                     ▼                      ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Core App Views  │    │ Core App Views   │    │ Core App Views  │
+│ & Analytics     │    │ & Analytics      │    │ & Analytics     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
+## Next Steps
+
+1. **Create unified data models** for missing data types (Water, Nutrition, BodyWeight)
+2. **Implement normalization methods** for each source to populate unified models
+3. **Create aggregation methods** in core app for date range queries
+4. **Integrate with existing data priority system** for source selection
+5. **Test the complete data flow** from sources to core app views
+
+This plan provides a comprehensive approach to normalizing fitness data from multiple sources while maintaining data integrity and providing flexible aggregation capabilities.
+
+# Usage Examples
+## Get user's fitness summary for last 7 days
+from datetime import date, timedelta
+from Flexingg.core.utils import get_user_fitness_summary
+
+end_date = date.today()
+start_date = end_date - timedelta(days=7)
+summary = get_user_fitness_summary(user, start_date, end_date)
+
+## Access specific data
+total_steps = summary['steps']['total_steps']
+weight_entries = summary['weight']['weights']
+sleep_data = summary['sleep']['sleep_entries'

@@ -5,4 +5,33 @@
     <h2 class="text-xl font-pixel text-white mb-4">Monthly Calories Podium</h2>
 
     {% component 'calories_podium' %}{% endcomponent %}
+
+    <!-- Add new competition sections using fitness_summary -->
+    {% if fitness_summary %}
+    <div class="mt-6 space-y-4">
+        <h3 class="text-lg font-pixel text-white">Weekly Progress</h3>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="bg-[#333] p-3 rounded">
+                <div class="text-gray-300">Steps This Week</div>
+                <div class="text-2xl font-bold text-white">{{ weekly_summary.steps.total_steps|default:0 }}</div>
+            </div>
+            <div class="bg-[#333] p-3 rounded">
+                <div class="text-gray-300">Workouts This Week</div>
+                <div class="text-2xl font-bold text-white">{{ weekly_summary.workouts.total_workouts|default:0 }}</div>
+            </div>
+        </div>
+
+        <h3 class="text-lg font-pixel text-white">Monthly Progress</h3>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="bg-[#333] p-3 rounded">
+                <div class="text-gray-300">Steps This Month</div>
+                <div class="text-2xl font-bold text-white">{{ monthly_summary.steps.total_steps|default:0 }}</div>
+            </div>
+            <div class="bg-[#333] p-3 rounded">
+                <div class="text-gray-300">Workouts This Month</div>
+                <div class="text-2xl font-bold text-white">{{ monthly_summary.workouts.total_workouts|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>

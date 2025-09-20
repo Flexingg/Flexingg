@@ -98,21 +98,16 @@ class HomeView(TemplateView):
             ).aggregate(total=Sum('steps'))['total'] or 0
             context['todays_steps'] = todays_steps
 
-            # Calculate today's lifting volume
+            # Calculate today's lifting volume using the Workout model's method
             total_volume = 0
             workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
             for workout in workouts:
-                if workout.source == 'liftosaur':
-                    # This is a placeholder, as the volume calculation is complex
-                    # and depends on the structure of the data from Liftosaur.
-                    # For now, we'll just sum up the reps.
-                    if workout.data.get('storage') and workout.data.get('storage').get('history'):
-                        for entry in workout.data.get('storage', {}).get('history', [])[0].get('entries', []):
-                            for s in entry.get('sets', []):
-                                total_volume += s.get('completedReps', 0) * s.get('completedWeight', {}).get('value', 0)
+                total_volume += workout.get_total_volume_k()
+                print(f"Workout {workout.id} volume: {workout.get_total_volume_k()}k")
 
-            todays_lifting_volume_k = round(total_volume / 1000) if total_volume > 0 else 0
-            context['todays_lifting_volume_k'] = todays_lifting_volume_k
+            context['todays_lifting_volume_k'] = total_volume
+
+
 
             # Calculate today's consumed calories from Health Connect nutrition
             todays_consumed_calories = get_daily_consumed_calories(profile)
@@ -160,14 +155,14 @@ class StatsAPIView(LoginRequiredMixin, View):
 
         # Lifting volume
         total_volume = 0
+        print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            if workout.source == 'liftosaur':
-                if workout.data.get('storage') and workout.data.get('storage').get('history'):
-                    for entry in workout.data.get('storage', {}).get('history', [])[0].get('entries', []):
-                        for s in entry.get('sets', []):
-                            total_volume += s.get('completedReps', 0) * s.get('completedWeight', {}).get('value', 0)
-        volume_k = round(total_volume / 1000) if total_volume > 0 else 0
+            print(workout.id, workout.get_total_volume_k())
+            total_volume += workout.get_total_volume_k()
+            print(total_volume)
+        volume_k = total_volume
+
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
