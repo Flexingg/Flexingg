@@ -190,8 +190,25 @@ def sync_user_data(user_id):
                 garmin_activities = garth.client.connectapi(activities_url)
                 end_date = timezone.now().date()
                 start_date = end_date - timedelta(days=30)
-                steps_url = f"/usersummary-service/stats/steps/daily/{start_date.isoformat()}/{end_date.isoformat()}"
-                garmin_steps = garth.client.connectapi(steps_url)
+                # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
+                garmin_steps = []
+                current_date = start_date
+                while current_date <= end_date:
+                    try:
+                        if current_date > timezone.localtime().date():
+                            current_date += timedelta(days=1)
+                            continue
+
+                        # Fetch daily steps for this specific date
+                        url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                        daily_steps_data = garth.client.connectapi(url)
+                        if daily_steps_data and len(daily_steps_data) > 0:
+                            garmin_steps.extend(daily_steps_data)
+                        logger.info(f"Successfully fetched steps data for {current_date}")
+                    except Exception as step_err:
+                        logger.error(f"Error syncing steps for {current_date} for user {user.id}: {step_err}")
+
+                    current_date += timedelta(days=1)
                 logger.info("Successfully fetched Garmin data")
             else:
                 logger.error("Failed to configure Garmin client")
