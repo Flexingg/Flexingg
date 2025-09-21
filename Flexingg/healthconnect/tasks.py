@@ -1,7 +1,7 @@
 from celery import shared_task
 from .utils import HCGatewayClient
 from .models import HealthConnectData
-from core.models import UserProfile
+from core.models import UserProfile, ConnectedService
 from django.utils import timezone
 from django.utils.timezone import make_aware, is_aware
 from decimal import Decimal
@@ -21,16 +21,13 @@ def healthconnect_sync_task(profile_id):
         logger.error(f"No UserProfile for ID {profile_id}")
         return {'success': False, 'error': 'No profile found'}
 
-    if not profile.hc_username:
+    try:
+        hc_auth = ConnectedService.objects.get(user=profile.user, service_name='healthconnect')
+    except ConnectedService.DoesNotExist:
         logger.warning(f"No HC connection for profile {profile_id}")
         return {'success': False, 'error': 'No Health Connect connection'}
 
-    client = HCGatewayClient()
-    # Restore tokens from profile if present
-    if profile.hc_token:
-        client.token = profile.hc_token
-        client.refresh_token = profile.hc_refresh_token
-        client.expiry = profile.hc_token_expiry
+    client = HCGatewayClient(auth_data=hc_auth.auth_data)
 
     saved_count = 0
     try:
@@ -62,14 +59,27 @@ def healthconnect_sync_task(profile_id):
                 )
                 saved_count += 1
 
-        # Update profile with tokens and last_sync
-        profile.hc_token = client.token
-        profile.hc_refresh_token = client.refresh_token
-        if client.expiry and not is_aware(client.expiry):
-            client.expiry = make_aware(client.expiry)
-        profile.hc_token_expiry = client.expiry
+        # Update ConnectedService with tokens
+        hc_auth.auth_data.update({
+            'token': client.token,
+            'refresh': client.refresh_token,
+            'expiry': client.expiry.isoformat() if client.expiry else None,
+        })
+        hc_auth.save()
+
         profile.hc_last_sync = timezone.now()
-        profile.save(update_fields=['hc_token', 'hc_refresh_token', 'hc_token_expiry', 'hc_last_sync'])
+        profile.save(update_fields=['hc_last_sync'])
+
+        # Trigger normalization tasks for the synced data
+        try:
+            normalize_healthconnect_weight_data.delay(profile_id)
+            normalize_healthconnect_steps_data.delay(profile_id)
+            normalize_healthconnect_nutrition_data.delay(profile_id)
+            normalize_healthconnect_sleep_data.delay(profile_id)
+            normalize_healthconnect_hydration_data.delay(profile_id)
+            logger.info(f"Triggered normalization tasks for profile {profile_id}")
+        except Exception as e:
+            logger.warning(f"Failed to trigger normalization tasks for profile {profile_id}: {e}")
 
         logger.info(f"Health Connect sync completed for profile {profile_id}: {saved_count} records saved")
         return {'success': True, 'saved': saved_count}
@@ -411,4 +421,66 @@ def normalize_healthconnect_hydration_data(user_id):
     except Exception as e:
         logger.error(f"Error normalizing Health Connect hydration data for user {user_id}: {str(e)}")
         return {'status': 'error', 'message': str(e)}
+
+
+@shared_task
+def normalize_healthconnect_sleep_data(user_id):
+    """
+    Extract and normalize sleep data from HealthConnectData to unified Sleep model.
+    """
+    from core.models import Sleep
+    from .models import HealthConnectData
+    from django.db import transaction
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Find sleep-related records in HealthConnectData
+        sleep_records = HealthConnectData.objects.filter(
+            profile_id=user_id,
+            method='sleepSession'
+        )
+
+        normalized_count = 0
+
+        with transaction.atomic():
+            for record in sleep_records:
+                # Check if already normalized
+                if Sleep.objects.filter(
+                    user_id=user_id,
+                    source='healthconnect',
+                    source_id=record.record_id
+                ).exists():
+                    continue
+
+                # Extract sleep data from JSON
+                data = record.data
+
+                # Sleep sessions have start and end times from the record
+                start_time = record.start_time
+                end_time = record.end_time
+
+                if not start_time or not end_time:
+                    logger.warning(f"Missing start or end time in sleep record {record.record_id}")
+                    continue
+
+                Sleep.objects.create(
+                    user_id=user_id,
+                    source='healthconnect',
+                    source_id=record.record_id,
+                    start_time=start_time,
+                    end_time=end_time,
+                    data={
+                        'healthconnect_data': data,
+                        'app_source': record.app_source
+                    }
+                )
+                normalized_count += 1
+
+        logger.info(f"Normalized {normalized_count} sleep records for user {user_id}")
+        return {'status': 'success', 'normalized': normalized_count}
+
+    except Exception as e:
+        logger.error(f"Error normalizing Health Connect sleep data for user {user_id}: {str(e)}")
         return {'status': 'error', 'message': str(e)}

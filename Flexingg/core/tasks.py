@@ -183,6 +183,65 @@ def normalize_hc_steps(steps_record):
         logger.warning(f"Error parsing Health Connect steps data: {e}. Data: {steps_record}")
         # Return None to skip this record
         return None
+def normalize_garmin_hydration(day):
+    logger.debug(f"Normalizing Garmin hydration data: {day}")
+
+    # Extract the actual hydration value in milliliters
+    value_ml = day.get('valueInML')
+    goal_ml = day.get('goalInML')
+
+    if value_ml is not None and value_ml > 0:
+        hydration_ml = value_ml
+        logger.debug(f"Using valueInML: {hydration_ml}")
+    elif goal_ml is not None and goal_ml > 0:
+        hydration_ml = goal_ml
+        logger.debug(f"Using goalInML: {hydration_ml}")
+    else:
+        logger.debug(f"No valid hydration data found in: {day}")
+        return None
+
+    # Convert milliliters to ounces (1 ml = 0.033814 ounces)
+    amount_ounces = hydration_ml * 0.033814
+    logger.debug(f"Converted {hydration_ml} ml to {amount_ounces} ounces")
+
+    return {
+        'date': datetime.strptime(day.get('calendarDate'), '%Y-%m-%d').date(),
+        'amount_ounces': amount_ounces,
+        'data': day
+    }
+    return {
+        'date': datetime.strptime(day.get('calendarDate'), '%Y-%m-%d').date(),
+        'amount_ounces': day.get('valueInML', day.get('goalInML', 0)) * 0.033814,  # ml to ounces
+        'data': day
+    }
+
+def normalize_hc_hydration(hydration_record):
+    try:
+        start_str = hydration_record.get('start', '')
+        if 'Z' in start_str:
+            start_str = start_str.replace('Z', '')
+
+        # Parse the datetime and make it timezone-aware
+        start_dt = datetime.fromisoformat(start_str)
+        record_date = timezone.make_aware(start_dt).date()
+
+        data = hydration_record.get('data', {})
+        hydration_amount = data.get('volume')
+
+        if hydration_amount is None:
+            return None
+
+        # Convert to ounces (assume liters)
+        hydration_ounces = Decimal(str(hydration_amount * 33.814))
+
+        return {
+            'date': record_date,
+            'amount_ounces': hydration_ounces,
+            'data': hydration_record
+        }
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Error parsing Health Connect hydration data: {e}. Data: {hydration_record}")
+        return None
 
 
 @shared_task
@@ -266,16 +325,10 @@ def sync_user_data(user_id):
             priorities_by_type[p.data_type] = []
         priorities_by_type[p.data_type].append(p.source)
 
-    # 2. Delete old data for the last 30 days
-    thirty_days_ago = timezone.now() - timedelta(days=30)
-    Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).delete()
-    Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).delete()
-    DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).delete()
-    DailyWater.objects.filter(user=user, date__gte=thirty_days_ago.date()).delete()
-    logger.info(f"Deleted last 30 days of data for user {user.username}")
+    # 2. No deletion - update existing data instead
 
     # 3. Fetch fresh data
-    garmin_activities, garmin_steps, hc_data, liftosaur_data = [], [], {}, {}
+    garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data = [], [], [], {}, {}
 
     try:
         garmin_auth_service = ConnectedService.objects.get(user=user, service_name='garmin')
@@ -302,23 +355,65 @@ def sync_user_data(user_id):
                 start_date = end_date - timedelta(days=30)
                 # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
                 garmin_steps = []
+
+                
+                # Fetch hydration data day by day
+                garmin_hydration = []
                 current_date = start_date
-                while current_date <= end_date:
+                max_iterations = 50  # Prevent infinite loops
+                iteration_count = 0
+                while current_date <= end_date and iteration_count < max_iterations:
                     try:
                         if current_date > timezone.localtime().date():
-                            current_date += timedelta(days=1)
+                            
                             continue
 
-                        # Fetch daily steps for this specific date
-                        url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
-                        daily_steps_data = garth.client.connectapi(url)
-                        if daily_steps_data and len(daily_steps_data) > 0:
-                            garmin_steps.extend(daily_steps_data)
-                        logger.info(f"Successfully fetched steps data for {current_date}")
-                    except Exception as step_err:
-                        logger.error(f"Error syncing steps for {current_date} for user {user.id}: {step_err}")
+                        url = f"/usersummary-service/stats/hydration/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                        daily_hydration_data = None
+                        retry_count = 0
+                        max_retries = 1
+                        while retry_count <= max_retries and daily_hydration_data is None:
+                            try:
+                                daily_hydration_data = garth.client.connectapi(url)
+                                logger.info(f"Successfully fetched hydration data for {current_date}")
+                            except GarthHTTPError as api_err:
+                                if api_err.status_code in [401, 403]:
+                                    if retry_count == 0:
+                                        logger.warning(f"Auth error on hydration API for {current_date}, attempting refresh and retry.")
+                                        if refresh_oauth2_only(auth_data) and configure_garmin_client(auth_data):
+                                            retry_count += 1
+                                            continue
+                                        else:
+                                            logger.error(f"Token refresh failed during hydration sync for {current_date}")
+                                            break
+                                    else:
+                                        logger.error(f"Retry failed after refresh for hydration API {current_date}")
+                                        break
+                                elif api_err.status_code == 404:
+                                    logger.debug(f"Hydration API not available for {current_date}")
+                                    break
+                                else:
+                                    raise
+                            except Exception as api_err:
+                                logger.warning(f"Hydration API failed for {current_date}: {api_err}")
+                                break
+                            retry_count += 1 if daily_hydration_data is None else 0
 
+                        if daily_hydration_data and len(daily_hydration_data) > 0:
+                            garmin_hydration.extend(daily_hydration_data)
+                    except Exception as hydration_err:
+                        logger.error(f"Error syncing hydration for {current_date} for user {user.id}: {hydration_err}")
+
+                    
+
+                # Always increment the date, regardless of errors
                     current_date += timedelta(days=1)
+                    iteration_count += 1
+
+                if iteration_count >= max_iterations:
+                    logger.error(f"Hydration sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
+
+                logger.info(f"Successfully fetched Garmin data. Hydration records: {len(garmin_hydration)}")
                 logger.info("Successfully fetched Garmin data")
             else:
                 logger.error("Failed to configure Garmin client")
@@ -383,52 +478,156 @@ def sync_user_data(user_id):
                     for activity in garmin_activities:
                         norm = normalize_garmin_activity_to_workout(activity)
                         if norm:
-                            # Allow multiple Garmin activities per day - no date filtering
-                            Workout.objects.update_or_create(user=user, source='garmin', source_id=norm['source_id'], defaults=norm)
+                            existing = Workout.objects.filter(user=user, source='garmin', source_id=norm['source_id']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.start_time != norm['start_time'] or
+                                    existing.end_time != norm['end_time'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.start_time = norm['start_time']
+                                    existing.end_time = norm['end_time']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                Workout.objects.create(user=user, source='garmin', **norm)
                 elif source == 'liftosaur' and liftosaur_data:
                      for workout in liftosaur_data.get('storage', {}).get('history', []):
                         norm = normalize_liftosaur_workout(workout)
                         if norm['start_time'].date() not in filled_dates:
-                            Workout.objects.update_or_create(user=user, source='liftosaur', source_id=norm['source_id'], defaults=norm)
+                            existing = Workout.objects.filter(user=user, source='liftosaur', source_id=norm['source_id']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.start_time != norm['start_time'] or
+                                    existing.end_time != norm['end_time'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.start_time = norm['start_time']
+                                    existing.end_time = norm['end_time']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                Workout.objects.create(user=user, source='liftosaur', **norm)
                             filled_dates.add(norm['start_time'].date())
                 elif source == 'healthconnect' and 'exerciseSession' in hc_data:
                     for exercise in hc_data['exerciseSession']:
                         norm = normalize_hc_workout(exercise)
                         if norm and norm['start_time'].date() not in filled_dates:
-                            Workout.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
+                            existing = Workout.objects.filter(user=user, source='healthconnect', source_id=norm['source_id']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.start_time != norm['start_time'] or
+                                    existing.end_time != norm['end_time'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.start_time = norm['start_time']
+                                    existing.end_time = norm['end_time']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                Workout.objects.create(user=user, source='healthconnect', **norm)
                             filled_dates.add(norm['start_time'].date())
             elif data_type == 'sleep':
                 if source == 'healthconnect' and 'sleepSession' in hc_data:
                     for sleep_session in hc_data['sleepSession']:
                         norm = normalize_hc_sleep(sleep_session)
                         if norm and norm['start_time'].date() not in filled_dates:
-                            Sleep.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
+                            existing = Sleep.objects.filter(user=user, source='healthconnect', source_id=norm['source_id']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.start_time != norm['start_time'] or
+                                    existing.end_time != norm['end_time'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.start_time = norm['start_time']
+                                    existing.end_time = norm['end_time']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                Sleep.objects.create(user=user, source='healthconnect', **norm)
                             filled_dates.add(norm['start_time'].date())
             elif data_type == 'steps':
                 if source == 'garmin':
                     for day in garmin_steps:
                         norm = normalize_garmin_steps(day)
                         if norm['date'] not in filled_dates:
-                            DailySteps.objects.update_or_create(user=user, source='garmin', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
+                            existing = DailySteps.objects.filter(user=user, source='garmin', date=norm['date']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.steps != norm['steps'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.steps = norm['steps']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                DailySteps.objects.create(user=user, source='garmin', date=norm['date'], steps=norm['steps'], data=norm['data'])
                             filled_dates.add(norm['date'])
                 elif source == 'healthconnect' and 'steps' in hc_data:
                     for steps_record in hc_data['steps']:
                         norm = normalize_hc_steps(steps_record)
                         if norm and norm['date'] not in filled_dates:
-                            DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
+                            existing = DailySteps.objects.filter(user=user, source='healthconnect', date=norm['date']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.steps != norm['steps'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.steps = norm['steps']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                DailySteps.objects.create(user=user, source='healthconnect', date=norm['date'], steps=norm['steps'], data=norm['data'])
                             filled_dates.add(norm['date'])
             elif data_type == 'water':
-                if source == 'healthconnect' and 'hydration' in hc_data:
-                    # Process Health Connect hydration data
-                    from healthconnect.tasks import normalize_healthconnect_hydration_data
-                    normalize_healthconnect_hydration_data.apply_async(args=[user.id])
-                elif source == 'garmin':
-                    # Process Garmin hydration data
-                    from garminconnect.tasks import garmin_sync_hydration_task
-                    end_date = timezone.now().date()
-                    start_date = end_date - timedelta(days=30)
-                    garmin_sync_hydration_task.apply_async(args=[user.id, start_date, end_date])
-            logger.info(f"Processed {data_type} data from {source} for user {user.username}")
+                logger.info(f"Starting water data sync for user {user.username}")
+                logger.info(f"Processing water data from {source}")
+                logger.info(f"Available sources for water: {priorities_by_type.get('water', [])}")
+                logger.info(f"Garmin hydration records available: {len(garmin_hydration) if 'garmin_hydration' in locals() else 'N/A'}")
+                logger.info(f"Health Connect hydration data available: {'hydration' in hc_data if 'hc_data' in locals() else 'N/A'}")
+                if source == 'garmin':
+                    for day in garmin_hydration:
+                        norm = normalize_garmin_hydration(day)
+                        if norm['date'] not in filled_dates:
+                            existing = DailyWater.objects.filter(user=user, source='garmin', date=norm['date']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.amount_ounces != norm['amount_ounces'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.amount_ounces = norm['amount_ounces']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                logger.debug(f"Creating new Garmin water record: date={norm['date']}, amount={norm['amount_ounces']}")
+                                DailyWater.objects.create(user=user, source='garmin', date=norm['date'], amount_ounces=norm['amount_ounces'], data=norm['data'])
+                            filled_dates.add(norm['date'])
+                elif source == 'healthconnect' and 'hydration' in hc_data:
+                    for record in hc_data['hydration']:
+                        norm = normalize_hc_hydration(record)
+                        if norm and norm['date'] not in filled_dates:
+                            existing = DailyWater.objects.filter(user=user, source='healthconnect', date=norm['date']).first()
+                            if existing:
+                                needs_update = (
+                                    existing.amount_ounces != norm['amount_ounces'] or
+                                    existing.data != norm['data']
+                                )
+                                if needs_update:
+                                    existing.amount_ounces = norm['amount_ounces']
+                                    existing.data = norm['data']
+                                    existing.save()
+                            else:
+                                logger.debug(f"Creating new Health Connect water record: date={norm['date']}, amount={norm['amount_ounces']}")
+                                DailyWater.objects.create(user=user, source='healthconnect', **norm)
+                            filled_dates.add(norm['date'])
+
 
     # 5. Process nutrition data (no priority system yet, just process from Health Connect)
     if 'nutrition' in hc_data and hc_data['nutrition']:
@@ -491,26 +690,54 @@ def sync_user_data(user_id):
                 else:
                     nutrition_datetime = timezone.make_aware(start_dt)
 
-                # Create nutrition entry
-                NutritionEntry.objects.update_or_create(
+                # Create or update nutrition entry
+                existing = NutritionEntry.objects.filter(
                     user=user,
                     source='healthconnect',
-                    source_id=nutrition_record.get('_id'),
-                    defaults={
-                        'datetime': nutrition_datetime,
-                        'food_name': food_name,
-                        'quantity_description': quantity_description,
-                        'quantity_grams': quantity_grams,
-                        'calories': calories,
-                        'protein_grams': protein_grams,
-                        'fat_grams': fat_grams,
-                        'carbs_grams': carbs_grams,
-                        'data': {
-                            'healthconnect_data': nutrition_record,
-                            'app_source': nutrition_record.get('app', 'unknown')
-                        }
-                    }
-                )
+                    source_id=nutrition_record.get('_id')
+                ).first()
+                data_dict = {
+                    'healthconnect_data': nutrition_record,
+                    'app_source': nutrition_record.get('app', 'unknown')
+                }
+                if existing:
+                    needs_update = (
+                        existing.datetime != nutrition_datetime or
+                        existing.food_name != food_name or
+                        existing.quantity_description != quantity_description or
+                        existing.quantity_grams != quantity_grams or
+                        existing.calories != calories or
+                        existing.protein_grams != protein_grams or
+                        existing.fat_grams != fat_grams or
+                        existing.carbs_grams != carbs_grams or
+                        existing.data != data_dict
+                    )
+                    if needs_update:
+                        existing.datetime = nutrition_datetime
+                        existing.food_name = food_name
+                        existing.quantity_description = quantity_description
+                        existing.quantity_grams = quantity_grams
+                        existing.calories = calories
+                        existing.protein_grams = protein_grams
+                        existing.fat_grams = fat_grams
+                        existing.carbs_grams = carbs_grams
+                        existing.data = data_dict
+                        existing.save()
+                else:
+                    NutritionEntry.objects.create(
+                        user=user,
+                        source='healthconnect',
+                        source_id=nutrition_record.get('_id'),
+                        datetime=nutrition_datetime,
+                        food_name=food_name,
+                        quantity_description=quantity_description,
+                        quantity_grams=quantity_grams,
+                        calories=calories,
+                        protein_grams=protein_grams,
+                        fat_grams=fat_grams,
+                        carbs_grams=carbs_grams,
+                        data=data_dict
+                    )
                 nutrition_count += 1
             except Exception as e:
                 logger.error(f"Error processing nutrition record {nutrition_record.get('_id', 'unknown')}: {e}")
@@ -518,33 +745,9 @@ def sync_user_data(user_id):
 
         logger.info(f"Processed {nutrition_count} nutrition entries from Health Connect for user {user.username}")
 
-    if 'sleep' in priorities_by_type:
-        filled_dates = set()
-        for source in priorities_by_type['sleep']:
-            if source == 'healthconnect' and 'sleepSession' in hc_data:
-                for sleep_session in hc_data['sleepSession']:
-                    norm = normalize_hc_sleep(sleep_session)
-                    if norm and norm['start_time'].date() not in filled_dates:
-                        Sleep.objects.update_or_create(user=user, source='healthconnect', source_id=norm['source_id'], defaults=norm)
-                        filled_dates.add(norm['start_time'].date())
-
-    if 'steps' in priorities_by_type:
-        filled_dates = set()
-        for source in priorities_by_type['steps']:
-            if source == 'garmin':
-                for day in garmin_steps:
-                    norm = normalize_garmin_steps(day)
-                    if norm['date'] not in filled_dates:
-                        DailySteps.objects.update_or_create(user=user, source='garmin', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                        filled_dates.add(norm['date'])
-            elif source == 'healthconnect' and 'steps' in hc_data:
-                for steps_record in hc_data['steps']:
-                    norm = normalize_hc_steps(steps_record)
-                    if norm and norm['date'] not in filled_dates:
-                        DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
-                        filled_dates.add(norm['date'])
 
     # Log summary of what was processed
+    thirty_days_ago = timezone.now() - timedelta(days=30)
     total_workouts = Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_sleep = Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_steps = DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
@@ -552,6 +755,6 @@ def sync_user_data(user_id):
     workouts_from_liftosaur = Workout.objects.filter(user=user, source='liftosaur', start_time__gte=thirty_days_ago).count()
     workouts_from_garmin = Workout.objects.filter(user=user, source='garmin', start_time__gte=thirty_days_ago).count()
     workouts_from_hc = Workout.objects.filter(user=user, source='healthconnect', start_time__gte=thirty_days_ago).count()
-    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records, {total_nutrition} nutrition entries in the last 30 days")
-
+    total_water = DailyWater.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
+    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records, {total_water} water records, {total_nutrition} nutrition entries in the last 30 days")
     return f"Sync completed for user {user_id}"

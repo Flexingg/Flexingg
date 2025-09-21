@@ -31,12 +31,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', 'flexin.gg').split(',')
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://dev.flexin.gg',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'https://localhost:8000',
-]
+CSRF_TRUSTED_ORIGINS = [f'https://{host.strip()}' for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'flexin.gg').split(',')]
 
 # Application definition
 

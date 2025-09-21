@@ -7,43 +7,35 @@ import os
 
 
 class HCGatewayClient:
-    METHODS = [
-        'activeCaloriesBurned', 'basalBodyTemperature', 'basalMetabolicRate', 'bloodGlucose',
-        'bloodPressure', 'bodyFat', 'bodyTemperature', 'boneMass', 'cervicalMucus', 'distance',
-        'exerciseSession', 'elevationGained', 'floorsClimbed', 'heartRate', 'height', 'hydration',
-        'leanBodyMass', 'menstruationFlow', 'menstruationPeriod', 'nutrition', 'ovulationTest',
-        'oxygenSaturation', 'power', 'respiratoryRate', 'restingHeartRate', 'sleepSession',
-        'speed', 'steps', 'stepsCadence', 'totalCaloriesBurned', 'vo2Max', 'weight', 'wheelchairPushes'
-    ]
+    # METHODS = [
+    #     'activeCaloriesBurned', 'basalBodyTemperature', 'basalMetabolicRate', 'bloodGlucose',
+    #     'bloodPressure', 'bodyFat', 'bodyTemperature', 'boneMass', 'cervicalMucus', 'distance',
+    #     'exerciseSession', 'elevationGained', 'floorsClimbed', 'heartRate', 'height', 'hydration',
+    #     'leanBodyMass', 'menstruationFlow', 'menstruationPeriod', 'nutrition', 'ovulationTest',
+    #     'oxygenSaturation', 'power', 'respiratoryRate', 'restingHeartRate', 'sleepSession',
+    #     'speed', 'steps', 'stepsCadence', 'totalCaloriesBurned', 'vo2Max', 'weight', 'wheelchairPushes'
+    # ]
 
-
-    def __init__(self):
-        base_url = os.environ.get('HC_CONNECT_URL', 'http://localhost:6644')
-        self.base_url = base_url + '/api/v2'
+    METHODS = ['activeCaloriesBurned', 'hydration', 'nutrition', 'sleepSession', 'steps']
+    
+    def __init__(self, auth_data=None):
+        self.base_url = os.environ.get('HC_CONNECT_URL', 'http://localhost:6644') + '/api/v2'
         self.session = requests.Session()
         self.token = None
         self.refresh_token = None
         self.expiry = None
+        if auth_data:
+            self.token = auth_data.get('token')
+            self.refresh_token = auth_data.get('refresh')
+            expiry_str = auth_data.get('expiry')
+            if expiry_str:
+                self.expiry = timezone.datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
 
     def _get_headers(self):
         if self.token:
             return {'Authorization': f'Bearer {self.token}'}
         return {}
 
-    def login(self, username, password):
-        """
-        Login to HCGateway and get tokens.
-        Returns: dict with token, refresh, expiry or raises Exception on failure.
-        """
-        url = f"{self.base_url}/login"
-        data = {"username": username, "password": password}
-        response = self.session.post(url, json=data)
-        response.raise_for_status()
-        result = response.json()
-        self.token = result['token']
-        self.refresh_token = result['refresh']
-        self.expiry = timezone.datetime.fromisoformat(result['expiry'].replace('Z', '+00:00'))
-        return result
 
     def refresh(self):
         """
@@ -92,15 +84,30 @@ class HCGatewayClient:
 
         return now < expiry_aware
 
+    def login(self, username, password):
+        """
+        Login to HCGateway and get tokens.
+        Returns: dict with token, refresh, expiry or raises Exception on failure.
+        """
+        url = f"{self.base_url}/login"
+        data = {"username": username, "password": password}
+        response = self.session.post(url, json=data)
+        response.raise_for_status()
+        result = response.json()
+        self.token = result['token']
+        self.refresh_token = result['refresh']
+        self.expiry = timezone.datetime.fromisoformat(result['expiry'].replace('Z', '+00:00'))
+        return result
+
     def _ensure_auth(self):
         """
-        Ensure valid token, refresh if needed.
+        Ensure valid token, refresh if needed, or login if no refresh token.
         """
         if not self.is_authenticated():
             if self.refresh_token:
                 self.refresh()
             else:
-                raise ValueError("No valid authentication. Login required.")
+                raise ValueError("No valid authentication. Token refresh required, but no refresh token available.")
 
     def fetch(self, method, query=None):
         """

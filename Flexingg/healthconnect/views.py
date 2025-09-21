@@ -126,11 +126,13 @@ def sync_healthconnect(request):
         profile.hc_last_sync = timezone.now()
         profile.save(update_fields=['hc_token', 'hc_refresh_token', 'hc_token_expiry', 'hc_last_sync'])
         # Trigger normalization tasks for the synced data
-        from .tasks import normalize_healthconnect_weight_data, normalize_healthconnect_steps_data, normalize_healthconnect_nutrition_data
+        from .tasks import normalize_healthconnect_weight_data, normalize_healthconnect_steps_data, normalize_healthconnect_nutrition_data, normalize_healthconnect_sleep_data, normalize_healthconnect_hydration_data
         try:
             normalize_healthconnect_weight_data.delay(profile.id)
             normalize_healthconnect_steps_data.delay(profile.id)
             normalize_healthconnect_nutrition_data.delay(profile.id)
+            normalize_healthconnect_sleep_data.delay(profile.id)
+            normalize_healthconnect_hydration_data.delay(profile.id)
             logger.info(f"Triggered normalization tasks for user {profile.id}")
         except Exception as e:
             logger.warning(f"Failed to trigger normalization tasks for user {profile.id}: {e}")

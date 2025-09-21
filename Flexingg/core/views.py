@@ -15,7 +15,7 @@ from django.http import JsonResponse
 from django.views import View
 from .models import SweatScoreWeights, UserProfile, Friendship
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
-from .models import Workout, DailySteps, Sleep
+from .models import Workout, DailySteps, Sleep, DailyWater
 from .models import *  # JWT, Notification, Relationship
 from healthconnect.utils import get_daily_consumed_calories
 from healthconnect.tasks import healthconnect_sync_task
@@ -46,41 +46,34 @@ class HomeView(TemplateView):
             context['total_coins'] = profile.cardio_coins
             context['level'] = profile.level
 
-            # Garmin sync debounce logic (updated for async)
+            # Data sources sync debounce logic
+            debounce_minutes = getattr(profile, 'sync_debounce_minutes', 30)
+            threshold = timezone.now() - timedelta(minutes=debounce_minutes)
+            needs_sync = False
+
+            # Check Garmin
             garmin_auth = None
             try:
                 garmin_auth = Garmin_Auth.objects.get(user=profile)
                 context['garmin_auth'] = garmin_auth
-            except Garmin_Auth.DoesNotExist:
-                pass  # No auth, skip sync
-        
-            if garmin_auth:
-                debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
-                threshold = timezone.now() - timedelta(minutes=debounce_minutes)
                 if garmin_auth.last_sync is None or garmin_auth.last_sync < threshold:
-                    # Trigger async sync
-                    local_tz = get_current_timezone()
-                    last_sync_local = garmin_auth.last_sync.astimezone(local_tz) if garmin_auth.last_sync else None
-                    local_today = timezone.localtime().date()
-                    steps_start = last_sync_local.date() + timedelta(days=1) if last_sync_local else local_today - timedelta(days=30)
-                    activities_start = last_sync_local.date() if last_sync_local else local_today - timedelta(days=30)
-                    from garminconnect.tasks import garmin_sync_steps_task, garmin_sync_activities_task
-                    garmin_sync_steps_task.delay(profile.id, start_date=steps_start, end_date=local_today)
-                    garmin_sync_activities_task.delay(profile.id, limit=500, start_date=activities_start, end_date=local_today)
-                    context['garmin_sync_triggered'] = True
-        
-                    # Set user for sync progress indicator
-                    context['sync_user_id'] = profile.id
+                    needs_sync = True
+            except Garmin_Auth.DoesNotExist:
+                pass
 
-                    # Health Connect sync debounce logic
-                    if profile.hc_username:
-                        debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
-                        threshold = timezone.now() - timedelta(minutes=debounce_minutes)
-                        if profile.hc_last_sync is None or profile.hc_last_sync < threshold:
-                            # Trigger async sync
-                            healthconnect_sync_task.delay(profile.id)
-                            context['hc_sync_triggered'] = True
-                            logger.info(f"Triggered Health Connect sync for profile {profile.id}")
+            # Check Health Connect
+            if profile.hc_username and (profile.hc_last_sync is None or profile.hc_last_sync < threshold):
+                needs_sync = True
+
+            # Check Liftosaur
+            if profile.liftosaur_user_id:
+                needs_sync = True  # Assume needs sync since no last_sync field
+
+            if needs_sync:
+                sync_user_data.delay(profile.id)
+                context['sync_triggered'] = True
+                context['sync_user_id'] = profile.id
+                logger.info(f"Triggered general sync for profile {profile.id}")
         
             # Calculate today's total calories from the current user's unified workouts
             today = timezone.localtime().date()
@@ -97,12 +90,18 @@ class HomeView(TemplateView):
                 date=today
             ).aggregate(total=Sum('steps'))['total'] or 0
             context['todays_steps'] = todays_steps
+            # Calculate today's water intake
+            todays_water_ounces = DailyWater.objects.filter(
+                user=self.request.user,
+                date=today
+            ).aggregate(total=Sum('amount_ounces'))['total'] or 0
+            context['todays_water_ounces'] = todays_water_ounces
 
             # Calculate today's lifting volume using the Workout model's method
             total_volume = 0
             workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
             for workout in workouts:
-                total_volume += workout.get_total_volume_k()
+                
                 print(f"Workout {workout.id} volume: {workout.get_total_volume_k()}k")
 
             context['todays_lifting_volume_k'] = total_volume
@@ -112,6 +111,7 @@ class HomeView(TemplateView):
             # Calculate today's consumed calories from Health Connect nutrition
             todays_consumed_calories = get_daily_consumed_calories(profile)
             context['todays_consumed_calories'] = todays_consumed_calories
+            context['todays_water_ounces'] = 0
 
         else:
             context['todays_total_calories'] = 0
@@ -163,6 +163,33 @@ class StatsAPIView(LoginRequiredMixin, View):
             print(total_volume)
         volume_k = total_volume
 
+        # Water intake
+        water_ounces = DailyWater.objects.filter(
+            user=profile,
+            date=target_date
+        ).aggregate(total=Sum('amount_ounces'))['total'] or 0
+        # Lifting volume
+        total_volume = 0
+        print("Calculating lifting volume for date:", target_date)
+        workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
+        for workout in workouts:
+            print(workout.id, workout.get_total_volume_k())
+        # Lifting volume
+        total_volume = 0
+        print("Calculating lifting volume for date:", target_date)
+        workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
+        for workout in workouts:
+            print(workout.id, workout.get_total_volume_k())
+            
+            
+        
+        
+        
+            
+            
+        
+            
+
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
@@ -172,8 +199,10 @@ class StatsAPIView(LoginRequiredMixin, View):
             'calories': int(calories),
             'steps': int(steps),
             'volume_k': volume_k,
-            'consumed': consumed
+            'consumed': consumed,
+            'water_ounces': float(water_ounces)
         }
+            
 
         if get_earliest:
             earliest_candidates = []
@@ -496,21 +525,21 @@ class ProfileView(LoginRequiredMixin, TemplateView):
             })
 
         # Lifting workouts
-        lift_workouts = Workout.objects.filter(user=user).order_by('-timestamp')[:3]
+        lift_workouts = Workout.objects.filter(user=user).order_by('-start_time')[:3]
         for workout in lift_workouts:
-            total_volume = sum(ex.get_volume('lb') for ex in workout.exercises.all())
-            # For XP, sum gym_gems transactions around workout timestamp (approximate, last 24h)
-            workout_date = workout.timestamp.date()
+            total_volume = sum(ex.get_volume('lb') for ex in workout.unified_exercises.all())
+            # For XP, sum gym_gems transactions around workout start_time (approximate, last 24h)
+            workout_date = workout.start_time.date()
             xp_sum = Transaction.objects.filter(
                 user=user,
                 currency_type='gym_gems',
                 created_at__date=workout_date
             ).aggregate(Sum('amount'))['amount__sum'] or 0
             xp = float(xp_sum) * 0.5 if xp_sum else 0
-            days_ago = (timezone.now().date() - workout.timestamp.date()).days
+            days_ago = (timezone.now().date() - workout.start_time.date()).days
             relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
             exercises_details = []
-            for ex in workout.exercises.all():
+            for ex in workout.unified_exercises.all():
                 sets_details = []
                 for set_obj in ex.sets.all():
                     sets_details.append({
@@ -547,14 +576,14 @@ class ProfileView(LoginRequiredMixin, TemplateView):
             }
             recent_activities.append({
                 'type': 'lift',
-                'name': workout.name or 'Lifting Session',
+                'name': 'Lifting Session',
                 'relative_date': relative_date,
-                'time': workout.timestamp.strftime('%I:%M %p'),
+                'time': workout.start_time.strftime('%I:%M %p'),
                 'metric': int(total_volume),
                 'unit': 'lbs',
                 'duration': None,
                 'xp': xp,
-                'sort_date': workout.timestamp,
+                'sort_date': workout.start_time,
                 'details': details
             })
 

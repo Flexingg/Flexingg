@@ -294,8 +294,7 @@ def sync_user_data(user_id):
 
     try:
         hc_auth = ConnectedService.objects.get(user=user, service_name='healthconnect')
-        client = HCGatewayClient()
-        client.token = hc_auth.auth_data.get('token')
+        client = HCGatewayClient(auth_data=hc_auth.auth_data)
         client.refresh_token = hc_auth.auth_data.get('refresh_token')
         expiry_str = hc_auth.auth_data.get('expiry')
         if isinstance(expiry_str, str):
