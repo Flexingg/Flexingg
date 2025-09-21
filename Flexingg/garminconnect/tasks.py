@@ -342,6 +342,8 @@ def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
         garmin_auth.last_sync = timezone.now()
         garmin_auth.save(update_fields=['last_sync'])
 
+        normalize_garmin_weight_data.delay(user_id)
+
         return {'success': True, 'weights_synced': weights_synced}
 
     except Exception as e:
@@ -377,7 +379,7 @@ def normalize_garmin_weight_data(user_id):
                     continue
 
                 # Convert kg to lbs
-                weight_lbs = garmin_weight.weight_kg * 2.20462
+                weight_lbs = (Decimal(garmin_weight.weight_kg) * Decimal('2.20462')).quantize(Decimal('0.01'))
 
                 BodyWeight.objects.create(
                     user_id=user_id,

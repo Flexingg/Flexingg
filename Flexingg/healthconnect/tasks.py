@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.utils.timezone import make_aware, is_aware
 from decimal import Decimal
 import logging
+import decimal
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def normalize_healthconnect_weight_data(user_id):
                     continue
 
                 # Convert kg to lbs
-                weight_lbs = weight_kg * 2.20462
+                weight_lbs = (Decimal(str(weight_kg)) * Decimal('2.20462')).quantize(Decimal('0.01'))
 
                 BodyWeight.objects.create(
                     user_id=user_id,

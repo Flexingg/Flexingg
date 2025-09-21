@@ -1,5 +1,6 @@
 
 import logging
+from decimal import Decimal
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
@@ -11,6 +12,16 @@ import json
 logger = logging.getLogger(__name__)
 
 
+def convert_timestamp_to_datetime(ts):
+    """Converts millisecond timestamp to a datetime object."""
+    from django.utils import timezone
+    if ts:
+        from datetime import datetime
+        dt = datetime.fromtimestamp(ts / 1000.0)
+        return timezone.make_aware(dt)
+    return timezone.now()
+
+
 @shared_task
 def sync_liftosaur_data(user_id, data, session_token=None):
     """
@@ -20,7 +31,9 @@ def sync_liftosaur_data(user_id, data, session_token=None):
         logger.error(f"No data provided for user_id: {user_id}")
         return {'status': 'error', 'message': 'No data to process'}
 
-    return _process_liftosaur_data(user_id, data, session_token)
+    result = _process_liftosaur_data(user_id, data, session_token)
+    normalize_liftosaur_weight_data.delay(user_id)
+    return result
 
 def _process_liftosaur_data(user_id, data, session_token=None):
     """
@@ -44,6 +57,29 @@ def _process_liftosaur_data(user_id, data, session_token=None):
 
     processed = 0
     with transaction.atomic():
+        for measurement_data in data.get('bodyMeasurements', []):
+            measurement_type = measurement_data.get('type')
+            if measurement_type != 'bodyweight':
+                continue
+
+            timestamp = convert_timestamp_to_datetime(measurement_data.get('timestamp'))
+            value = measurement_data.get('value')
+            unit = measurement_data.get('unit')
+
+            if not all([value, unit, timestamp]):
+                logger.warning(f"Skipping body measurement with missing data: {measurement_data}")
+                continue
+
+            BodyMeasurement.objects.update_or_create(
+                user=user,
+                measurement_type=measurement_type,
+                timestamp=timestamp,
+                defaults={
+                    'value': value,
+                    'unit': unit,
+                }
+            )
+
         for workout_data in data.get('workouts', []):
             source_id = workout_data.get('id')
             if not source_id:
@@ -153,7 +189,7 @@ def normalize_liftosaur_weight_data(user_id):
                 # Convert weight to lbs if needed
                 weight_lbs = measurement.value
                 if measurement.unit == 'kg':
-                    weight_lbs = measurement.value * 2.20462
+                    weight_lbs = (Decimal(str(measurement.value)) * Decimal('2.20462')).quantize(Decimal('0.01'))
 
                 BodyWeight.objects.create(
                     user_id=user_id,

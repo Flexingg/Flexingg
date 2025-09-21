@@ -132,9 +132,9 @@ class BodyMeasurement(models.Model):
     """
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='body_measurements')
     measurement_type = models.CharField(max_length=50, default='bodyweight')
-    value = models.FloatField()
+    value = models.DecimalField(max_digits=10, decimal_places=2)
     unit = models.CharField(max_length=10)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField()
 
     class Meta:
         unique_together = ('user', 'measurement_type', 'timestamp')
