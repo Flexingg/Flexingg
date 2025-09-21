@@ -12,6 +12,10 @@ import logging
 from decimal import Decimal
 logger = logging.getLogger(__name__)
 
+# Import normalization task (moved separately to normalization_tasks.py)
+from .normalization_tasks import normalize_garmin_weight_data
+
+
 @shared_task
 def garmin_sync_steps_task(user_id, start_date, end_date):
     """
@@ -105,6 +109,7 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
     except Exception as e:
         logger.error(f"Unexpected error during steps task for user {user.id}: {e}")
         return {'success': False, 'error': str(e)}
+
 
 @shared_task
 def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=None):
@@ -244,6 +249,7 @@ def garmin_sync_activities_task(user_id, limit=500, start_date=None, end_date=No
     except Exception as e:
         logger.error(f"Unexpected error during activities task for user {user.id}: {e}")
         return {'success': False, 'error': str(e)}
+
 @shared_task
 def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
     """
@@ -342,6 +348,7 @@ def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
         garmin_auth.last_sync = timezone.now()
         garmin_auth.save(update_fields=['last_sync'])
 
+        # Trigger normalization task which lives in normalization_tasks.py
         normalize_garmin_weight_data.delay(user_id)
 
         return {'success': True, 'weights_synced': weights_synced}
@@ -351,55 +358,6 @@ def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
         return {'success': False, 'error': str(e)}
 
 
-@shared_task
-def normalize_garmin_weight_data(user_id):
-    """
-    Normalize Garmin body weight data to unified BodyWeight model.
-    """
-    from core.models import BodyWeight
-    from .models import GarminBodyWeight
-    from django.db import transaction
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    try:
-        user_weights = GarminBodyWeight.objects.filter(user_id=user_id)
-
-        normalized_count = 0
-
-        with transaction.atomic():
-            for garmin_weight in user_weights:
-                # Check if already normalized
-                if BodyWeight.objects.filter(
-                    user_id=user_id,
-                    source='garmin',
-                    source_id=str(garmin_weight.id)
-                ).exists():
-                    continue
-
-                # Convert kg to lbs
-                weight_lbs = (Decimal(garmin_weight.weight_kg) * Decimal('2.20462')).quantize(Decimal('0.01'))
-
-                BodyWeight.objects.create(
-                    user_id=user_id,
-                    source='garmin',
-                    source_id=str(garmin_weight.id),
-                    datetime=garmin_weight.datetime,
-                    weight_lbs=weight_lbs,
-                    data={
-                        'original_weight_kg': garmin_weight.weight_kg,
-                        'source_type': garmin_weight.source_type,
-                        'garmin_raw_data': garmin_weight.raw_data
-                    }
-                )
-                normalized_count += 1
-
-        logger.info(f"Normalized {normalized_count} weight measurements for user {user_id}")
-        return {'status': 'success', 'normalized': normalized_count}
-
-    except Exception as e:
-        logger.error(f"Error normalizing Garmin weight data for user {user_id}: {str(e)}")
 @shared_task
 def garmin_sync_hydration_task(user_id, start_date, end_date):
     """
@@ -491,4 +449,3 @@ def garmin_sync_hydration_task(user_id, start_date, end_date):
     except Exception as e:
         logger.error(f"Unexpected error during hydration task for user {user.id}: {e}")
         return {'success': False, 'error': str(e)}
-        return {'status': 'error', 'message': str(e)}

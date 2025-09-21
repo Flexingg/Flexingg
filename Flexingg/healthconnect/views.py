@@ -10,6 +10,8 @@ from .utils import HCGatewayClient
 from .models import HealthConnectData
 from core.models import UserProfile, ConnectedService
 import logging
+from healthconnect.sync_tasks import healthconnect_sync_task
+from healthconnect.normalization_tasks import *
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +128,6 @@ def sync_healthconnect(request):
         profile.hc_last_sync = timezone.now()
         profile.save(update_fields=['hc_token', 'hc_refresh_token', 'hc_token_expiry', 'hc_last_sync'])
         # Trigger normalization tasks for the synced data
-        from .tasks import normalize_healthconnect_weight_data, normalize_healthconnect_steps_data, normalize_healthconnect_nutrition_data, normalize_healthconnect_sleep_data, normalize_healthconnect_hydration_data
         try:
             normalize_healthconnect_weight_data.delay(profile.id)
             normalize_healthconnect_steps_data.delay(profile.id)

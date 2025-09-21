@@ -12,7 +12,8 @@ from .forms import GarminConnectForm
 import garth
 from garth.sso import exchange
 from garth.exc import GarthException, GarthHTTPError
-from .tasks import garmin_sync_steps_task, garmin_sync_activities_task
+from garminconnect.sync_tasks import *
+from garminconnect.normalization_tasks import *
 from .utils import configure_garmin_client, refresh_oauth2_only
 from core.models import Transaction
 from decimal import Decimal

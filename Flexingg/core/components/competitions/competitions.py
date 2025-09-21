@@ -16,7 +16,7 @@ class Competitions(component.Component):
             month_start = today.replace(day=1)
 
             # Get weekly and monthly summaries
-            from ...utils import get_user_fitness_summary
+            from core.aggregation_service import get_user_fitness_summary
             context['weekly_summary'] = get_user_fitness_summary(
                 self.request.user if hasattr(self, 'request') else None,
                 week_start, today

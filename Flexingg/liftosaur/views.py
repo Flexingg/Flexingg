@@ -7,7 +7,9 @@ from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from .models import *
 from core.models import ConnectedService
-from .tasks import *
+from liftosaur.data_processor import *
+from liftosaur.normalization_tasks import *
+from liftosaur.utils import *
 import logging
 # --- Helper Functions ---
 

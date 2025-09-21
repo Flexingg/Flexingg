@@ -1,14 +1,14 @@
 from django.test import TestCase
 from django.utils import timezone
 from datetime import datetime, date
-from .tasks import (
+from .normalization import (
     normalize_garmin_activity_to_workout,
     normalize_liftosaur_workout,
     normalize_hc_sleep,
     normalize_hc_steps,
     normalize_garmin_steps,
-    sync_user_data
 )
+from .sync_service import sync_user_data
 from .models import UserProfile, DataPriority, ConnectedService, Workout, Sleep, DailySteps
 from unittest.mock import patch, MagicMock
 
@@ -115,9 +115,9 @@ class SyncTaskTests(TestCase):
         # Create old data to delete
         Workout.objects.create(user=self.user, source='garmin', source_id='old1', start_time=self.thirty_days_ago, end_time=self.thirty_days_ago + timedelta(hours=1), data={})
 
-    @patch('Flexingg.core.tasks.garth.client.connectapi')
-    @patch('Flexingg.core.tasks.HCGatewayClient')
-    @patch('Flexingg.core.tasks.liftosaur_download')
+    @patch('Flexingg.core.sync_service.garth.client.connectapi')
+    @patch('Flexingg.core.sync_service.HCGatewayClient')
+    @patch('Flexingg.core.sync_service.liftosaur_download')
     def test_sync_user_data(self, mock_liftosaur, mock_hc, mock_garth):
         # Mock fetches
         mock_garth.side_effect = [

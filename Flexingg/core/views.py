@@ -7,7 +7,11 @@ from django.utils import timezone
 from django.utils.timezone import get_current_timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
-from .tasks import sync_user_data
+from core.sync_service import *
+from core.aggregation_service import *
+from core.data_processor import *
+from core.normalization import *
+from core.formatters import *
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
@@ -18,7 +22,7 @@ from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
 from .models import Workout, DailySteps, Sleep, DailyWater
 from .models import *  # JWT, Notification, Relationship
 from healthconnect.utils import get_daily_consumed_calories
-from healthconnect.tasks import healthconnect_sync_task
+from healthconnect.sync_tasks import healthconnect_sync_task
 from django.contrib.staticfiles.finders import find
 from django.http import HttpResponse
 from django.contrib.auth.models import User
@@ -268,7 +272,8 @@ class StatsAPIView(LoginRequiredMixin, View):
             
         
         
-        
+       
+            
             
             
         
