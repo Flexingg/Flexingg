@@ -262,6 +262,57 @@ def social_main(request):
             for i, u in enumerate(list_users_query)
         ]
         list_users = list_users[3:] if len(list_users) > 3 else []
+    if current_category == 'sleep':
+        # Calculate sleep duration manually since we can't sum JSON fields
+        from core.models import Sleep
+        from django.db.models import F, ExpressionWrapper, DurationField
+        from datetime import timedelta
+        
+        # Annotate with placeholder for consistency, but override with computation
+        annotated_users = users.annotate(
+            metric_value=Coalesce(Value(0), Value(0), output_field=IntegerField())
+        )
+        
+        # Calculate sleep hours for each user
+        sleep_hours = {}
+        for user in users:
+            sleep_records = Sleep.objects.filter(
+                user=user, 
+                start_time__date__gte=cutoff
+            )
+            total_seconds = 0
+            for record in sleep_records:
+                if record.end_time and record.start_time:
+                    total_seconds += (record.end_time - record.start_time).total_seconds()
+            sleep_hours[user.id] = round(total_seconds / 3600, 1) if total_seconds else 0
+        
+        sorted_users = sorted(annotated_users, key=lambda u: sleep_hours.get(u.id, 0), reverse=True)
+        
+        # Top 5 for podium
+        users_query = sorted_users[:5]
+        users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': sleep_hours[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(users_query)
+        ]
+        
+        # Top 10 for list
+        list_users_query = sorted_users[:10]
+        list_users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': sleep_hours[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(list_users_query)
+        ]
+        list_users = list_users[3:] if len(list_users) > 3 else []
+
     else:
         # Annotate once
         annotated_users = users.annotate(

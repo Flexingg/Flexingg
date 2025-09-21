@@ -2,7 +2,7 @@ from celery import shared_task
 import logging
 from django.utils import timezone
 from datetime import timedelta, datetime
-from .models import UserProfile, DataPriority, Workout, Sleep, DailySteps, ConnectedService, ArchivedWorkout, WorkoutConflict
+from .models import UserProfile, DataPriority, Workout, Sleep, DailySteps, DailyWater, ConnectedService, ArchivedWorkout, WorkoutConflict, NutritionEntry
 from .conflict_detection import ConflictDetector, ConflictResolver
 
 # Garmin imports
@@ -244,6 +244,20 @@ def sync_user_data(user_id):
             defaults={'rank': 2}
         )
 
+        # Water priorities: Health Connect primary, Garmin secondary
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='water',
+            source='healthconnect',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='water',
+            source='garmin',
+            defaults={'rank': 2}
+        )
+
         # Refresh priorities after creation
         priorities = DataPriority.objects.filter(user=user).order_by('data_type', 'rank')
 
@@ -257,6 +271,7 @@ def sync_user_data(user_id):
     Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).delete()
     Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).delete()
     DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).delete()
+    DailyWater.objects.filter(user=user, date__gte=thirty_days_ago.date()).delete()
     logger.info(f"Deleted last 30 days of data for user {user.username}")
 
     # 3. Fetch fresh data
@@ -357,7 +372,7 @@ def sync_user_data(user_id):
         liftosaur_data = {}
 
     # 4. Process and save data in priority order
-    for data_type in ['workout', 'sleep', 'steps']:
+    for data_type in ['workout', 'sleep', 'steps', 'water']:
         if data_type not in priorities_by_type:
             logger.warning(f"No priorities set for {data_type} for user {user.username}; skipping.")
             continue
@@ -402,7 +417,106 @@ def sync_user_data(user_id):
                         if norm and norm['date'] not in filled_dates:
                             DailySteps.objects.update_or_create(user=user, source='healthconnect', date=norm['date'], defaults={'steps': norm['steps'], 'data': norm['data']})
                             filled_dates.add(norm['date'])
+            elif data_type == 'water':
+                if source == 'healthconnect' and 'hydration' in hc_data:
+                    # Process Health Connect hydration data
+                    from healthconnect.tasks import normalize_healthconnect_hydration_data
+                    normalize_healthconnect_hydration_data.apply_async(args=[user.id])
+                elif source == 'garmin':
+                    # Process Garmin hydration data
+                    from garminconnect.tasks import garmin_sync_hydration_task
+                    end_date = timezone.now().date()
+                    start_date = end_date - timedelta(days=30)
+                    garmin_sync_hydration_task.apply_async(args=[user.id, start_date, end_date])
             logger.info(f"Processed {data_type} data from {source} for user {user.username}")
+
+    # 5. Process nutrition data (no priority system yet, just process from Health Connect)
+    if 'nutrition' in hc_data and hc_data['nutrition']:
+        logger.info(f"Processing nutrition data from Health Connect for user {user.username}")
+        nutrition_count = 0
+        for nutrition_record in hc_data['nutrition']:
+            try:
+                # Extract basic nutrition info
+                # Extract basic nutrition info
+                # The nutrition data is nested in nutrition_record['data']
+                nutrition_data = nutrition_record.get('data', {})
+                food_name = nutrition_data.get('name')
+                if not food_name:
+                    # Fallback to app_source or a descriptive name
+                    app_source = nutrition_record.get('app', 'unknown')
+                    if app_source == 'com.sbs.diet':
+                        food_name = 'Diet App Meal'
+                    else:
+                        food_name = f'Food from {app_source}'
+
+                calories = nutrition_data.get('energy', {}).get('inCalories') if isinstance(nutrition_data.get('energy'), dict) else None
+                protein_grams = nutrition_data.get('protein', {}).get('inGrams') if isinstance(nutrition_data.get('protein'), dict) else None
+                fat_grams = nutrition_data.get('totalFat', {}).get('inGrams') if isinstance(nutrition_data.get('totalFat'), dict) else None
+                carbs_grams = nutrition_data.get('totalCarbohydrate', {}).get('inGrams') if isinstance(nutrition_data.get('totalCarbohydrate'), dict) else None
+                # Convert to float for database storage
+                try:
+                    calories = float(calories) if calories is not None else None
+                    protein_grams = float(protein_grams) if protein_grams is not None else None
+                    fat_grams = float(fat_grams) if fat_grams is not None else None
+                    carbs_grams = float(carbs_grams) if carbs_grams is not None else None
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid numeric data in nutrition record {nutrition_record.get('_id', 'unknown')}")
+                    continue
+
+                # Convert calories from cal to kcal (divide by 1000)
+                calories = calories / 1000 if calories is not None else None
+
+                # Extract quantity information
+                quantity_description = None
+                quantity_grams = None
+
+                # Try to get quantity from serving size or other fields
+                if 'servingSize' in nutrition_record and isinstance(nutrition_record['servingSize'], dict):
+                    serving_size = nutrition_record['servingSize']
+                    if 'inGrams' in serving_size:
+                        quantity_grams = serving_size['inGrams']
+                    elif 'inMilliliters' in serving_size:
+                        # Convert mL to grams (approximate for liquids)
+                        quantity_grams = serving_size['inMilliliters']
+
+                # Parse datetime
+                start_str = nutrition_record.get('start', '')
+                if 'Z' in start_str:
+                    start_str = start_str.replace('Z', '+00:00')
+                start_dt = datetime.fromisoformat(start_str)
+
+                # Check if datetime is already timezone-aware
+                if start_dt.tzinfo is not None:
+                    nutrition_datetime = start_dt
+                else:
+                    nutrition_datetime = timezone.make_aware(start_dt)
+
+                # Create nutrition entry
+                NutritionEntry.objects.update_or_create(
+                    user=user,
+                    source='healthconnect',
+                    source_id=nutrition_record.get('_id'),
+                    defaults={
+                        'datetime': nutrition_datetime,
+                        'food_name': food_name,
+                        'quantity_description': quantity_description,
+                        'quantity_grams': quantity_grams,
+                        'calories': calories,
+                        'protein_grams': protein_grams,
+                        'fat_grams': fat_grams,
+                        'carbs_grams': carbs_grams,
+                        'data': {
+                            'healthconnect_data': nutrition_record,
+                            'app_source': nutrition_record.get('app', 'unknown')
+                        }
+                    }
+                )
+                nutrition_count += 1
+            except Exception as e:
+                logger.error(f"Error processing nutrition record {nutrition_record.get('_id', 'unknown')}: {e}")
+                continue
+
+        logger.info(f"Processed {nutrition_count} nutrition entries from Health Connect for user {user.username}")
 
     if 'sleep' in priorities_by_type:
         filled_dates = set()
@@ -434,9 +548,10 @@ def sync_user_data(user_id):
     total_workouts = Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_sleep = Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
     total_steps = DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
+    total_nutrition = NutritionEntry.objects.filter(user=user, datetime__gte=thirty_days_ago).count()
     workouts_from_liftosaur = Workout.objects.filter(user=user, source='liftosaur', start_time__gte=thirty_days_ago).count()
     workouts_from_garmin = Workout.objects.filter(user=user, source='garmin', start_time__gte=thirty_days_ago).count()
     workouts_from_hc = Workout.objects.filter(user=user, source='healthconnect', start_time__gte=thirty_days_ago).count()
-    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records in the last 30 days")
+    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records, {total_nutrition} nutrition entries in the last 30 days")
 
     return f"Sync completed for user {user_id}"

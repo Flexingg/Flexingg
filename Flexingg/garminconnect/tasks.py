@@ -398,4 +398,95 @@ def normalize_garmin_weight_data(user_id):
 
     except Exception as e:
         logger.error(f"Error normalizing Garmin weight data for user {user_id}: {str(e)}")
+@shared_task
+def garmin_sync_hydration_task(user_id, start_date, end_date):
+    """
+    Celery task for syncing daily hydration from Garmin.
+    """
+    try:
+        user = UserProfile.objects.get(id=user_id)
+        garmin_auth = Garmin_Auth.objects.get(user=user)
+    except (UserProfile.DoesNotExist, Garmin_Auth.DoesNotExist):
+        logger.error(f"No user or Garmin auth for ID {user_id}")
+        return {'success': False, 'error': 'No Garmin auth record found'}
+
+    hydration_synced = 0
+
+    try:
+        # Configure client with existing tokens
+        if not configure_garmin_client(garmin_auth):
+            logger.error(f"Failed to configure Garmin client for user {user.id}")
+            return {'success': False, 'error': 'Client configuration failed'}
+
+        # Sync hydration for each day in range
+        local_today = timezone.localtime().date()
+        current_date = start_date
+        while current_date <= end_date:
+            try:
+                if current_date > local_today:
+                    current_date += timedelta(days=1)
+                    continue
+
+                # Fetch daily hydration
+                url = f"/usersummary-service/stats/hydration/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                daily_hydration_data = None
+                retry_count = 0
+                max_retries = 1
+                while retry_count <= max_retries and daily_hydration_data is None:
+                    try:
+                        daily_hydration_data = garth.client.connectapi(url)
+                        logger.info(f"Successfully fetched hydration data for {current_date}.")
+                    except GarthHTTPError as api_err:
+                        if api_err.status_code in [401, 403]:
+                            if retry_count == 0:
+                                logger.warning(f"Auth error on hydration API for {current_date}, attempting refresh and retry.")
+                                if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
+                                    retry_count += 1
+                                    continue
+                                else:
+                                    logger.error(f"Token refresh failed during hydration sync for {current_date}")
+                                    break
+                            else:
+                                logger.error(f"Retry failed after refresh for hydration API {current_date}")
+                                break
+                        elif api_err.status_code == 404:
+                            # Hydration API might not exist, skip silently
+                            logger.debug(f"Hydration API not available for {current_date}")
+                            break
+                        else:
+                            raise
+                    except Exception as api_err:
+                        logger.warning(f"Hydration API failed for {current_date}: {api_err}")
+                        break
+                    retry_count += 1 if daily_hydration_data is None else 0
+
+                if daily_hydration_data and len(daily_hydration_data) > 0:
+                    # Assume hydration data structure similar to steps
+                    hydration_amount = daily_hydration_data[0].get('totalHydration', 0)
+                    if hydration_amount is not None and hydration_amount > 0:
+                        # Convert to ounces if needed (Garmin likely returns in ml)
+                        hydration_ounces = hydration_amount / 29.5735  # ml to ounces
+                        from core.models import DailyWater
+                        obj, created = DailyWater.objects.update_or_create(
+                            user=user,
+                            source='garmin',
+                            date=current_date,
+                            defaults={
+                                'amount_ounces': hydration_ounces,
+                                'data': daily_hydration_data[0]
+                            }
+                        )
+                        if created: hydration_synced += 1
+            except Exception as hydration_err:
+                logger.error(f"Error syncing hydration for {current_date} for user {user.id}: {hydration_err}")
+
+            current_date += timedelta(days=1)
+        garmin_auth.last_sync = timezone.now()
+        garmin_auth.save(update_fields=['last_sync'])
+
+        return {'success': True, 'hydration_synced': hydration_synced}
+
+    except Exception as e:
+        logger.error(f"Unexpected error during hydration task for user {user.id}: {e}")
+        return {'success': False, 'error': str(e)}
         return {'status': 'error', 'message': str(e)}

@@ -9,6 +9,9 @@ from django.utils.timezone import make_aware, is_aware
 from .utils import HCGatewayClient
 from .models import HealthConnectData
 from core.models import UserProfile, ConnectedService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -122,6 +125,16 @@ def sync_healthconnect(request):
         profile.hc_token_expiry = client.expiry
         profile.hc_last_sync = timezone.now()
         profile.save(update_fields=['hc_token', 'hc_refresh_token', 'hc_token_expiry', 'hc_last_sync'])
+        # Trigger normalization tasks for the synced data
+        from .tasks import normalize_healthconnect_weight_data, normalize_healthconnect_steps_data, normalize_healthconnect_nutrition_data
+        try:
+            normalize_healthconnect_weight_data.delay(profile.id)
+            normalize_healthconnect_steps_data.delay(profile.id)
+            normalize_healthconnect_nutrition_data.delay(profile.id)
+            logger.info(f"Triggered normalization tasks for user {profile.id}")
+        except Exception as e:
+            logger.warning(f"Failed to trigger normalization tasks for user {profile.id}: {e}")
+
         return JsonResponse({'success': True, 'saved': saved_count, 'message': 'Sync completed.'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

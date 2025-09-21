@@ -10,5 +10,6 @@ class StatCard(component.Component):
         context['todays_steps'] = kwargs.get('todays_steps', 0)
         context['todays_consumed_calories'] = kwargs.get('todays_consumed_calories', 0)
         context['todays_lifting_volume_k'] = kwargs.get('todays_lifting_volume_k', 0)
+        context['todays_water_ounces'] = kwargs.get('todays_water_ounces', 0)
         context['fitness_summary'] = kwargs.get('fitness_summary', {})
         return context

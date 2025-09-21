@@ -289,6 +289,20 @@ def create_default_data_priorities(sender, instance, created, **kwargs):
             defaults={'rank': 2}
         )
 
+        # Water priorities: Health Connect primary, Garmin secondary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='water',
+            source='healthconnect',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='water',
+            source='garmin',
+            defaults={'rank': 2}
+        )
+
 
 class ConnectedService(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='connected_services')
@@ -308,7 +322,7 @@ class ConnectedService(models.Model):
 
 class DataPriority(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='data_priorities')
-    data_type = models.CharField(max_length=50, choices=[('workout', 'Workout'), ('sleep', 'Sleep'), ('steps', 'Steps')])
+    data_type = models.CharField(max_length=50, choices=[('workout', 'Workout'), ('sleep', 'Sleep'), ('steps', 'Steps'), ('water', 'Water')])
     source = models.CharField(max_length=50, choices=[('garmin', 'Garmin'), ('healthconnect', 'Health Connect'), ('liftosaur', 'Liftosaur')])
     rank = models.IntegerField(help_text="Priority rank (1 is highest)")
 
@@ -541,7 +555,7 @@ class NutritionEntry(models.Model):
         verbose_name_plural = "Nutrition Entries"
 
     def __str__(self):
-        return f"Nutrition for {self.user.username} from {self.source}: {self.food_name} ({self.calories} cal)"
+        return f"Nutrition for {self.user.username} from {self.source}: {self.food_name} ({self.calories} kcal)"
 
 
 class BodyWeight(models.Model):

@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime, timedelta
 from django.utils import timezone
+from django.db.models import Sum
 import json
 import os
 
@@ -176,16 +177,17 @@ class HCGatewayClient:
 from .models import HealthConnectData
 from django.utils import timezone
 from decimal import Decimal
+from core.models import NutritionEntry
 
 
 def get_daily_consumed_calories(profile, date_obj=None):
     """
-    Compute total consumed calories (kcal) for a given day from nutrition records.
-    
+    Compute total consumed calories (kcal) for a given day from normalized NutritionEntry records.
+
     Args:
         profile: UserProfile instance
         date_obj: date object for the day; defaults to today in local time
-    
+
     Returns:
         int: Total kcal, rounded to nearest integer, or 0 if no data
     """
@@ -193,23 +195,18 @@ def get_daily_consumed_calories(profile, date_obj=None):
         today = timezone.localtime().date()
     else:
         today = date_obj
-    
-    records = HealthConnectData.objects.filter(
-        profile=profile,
-        method='nutrition',
-        start_time__date=today
-    )
-    
-    total = Decimal('0')
-    for record in records:
-        data = record.data
-        if isinstance(data, dict) and 'energy' in data:
-            energy = data['energy']
-            if isinstance(energy, dict) and 'inKilocalories' in energy:
-                try:
-                    kcal = Decimal(str(energy['inKilocalories']))
-                    total += kcal
-                except (ValueError, TypeError, InvalidOperation):
-                    pass  # Skip invalid values
-    
-    return int(total.quantize(Decimal('1')))
+
+    # Sum all calories from NutritionEntry records for the specified date
+    result = NutritionEntry.objects.filter(
+        user=profile,
+        datetime__date=today
+    ).aggregate(total=Sum('calories'))['total']
+
+    if result is None:
+        return 0
+
+    # Convert to int, handling Decimal type
+    if isinstance(result, Decimal):
+        return int(result.quantize(Decimal('1')))
+    else:
+        return int(result)

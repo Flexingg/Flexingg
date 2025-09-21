@@ -4,7 +4,7 @@
         <button type="button" id="calendar-btn" class="pixel-button p-2">📅</button>
         <input type="date" id="date-picker" class="font-pixel pixel-border bg-[#2a2a2a] text-white rounded px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;">
     </div>
-    <div id="stats-grid" class="grid grid-cols-2 gap-4">
+    <div id="stats-grid" class="grid grid-cols-2 gap-4 md:grid-cols-3">
         <!-- Cardio Stats -->
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
             <p class="font-pixel text-sm text-cyan-300">CARDIO</p>
@@ -31,6 +31,13 @@
             <p class="font-pixel text-sm text-red-400">CALORIES</p>
             <p id="consumed-value" class="font-pixel text-2xl text-white mt-2">{{ todays_consumed_calories|default:0|intcomma }}</p>
             <p class="text-xs text-gray-400">KCAL CONSUMED</p>
+        </div>
+
+        <!-- Water Intake -->
+        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
+            <p class="font-pixel text-sm text-blue-400">WATER</p>
+            <p id="water-value" class="font-pixel text-2xl text-white mt-2">{{ todays_water_ounces|default:0|floatformat:1 }}</p>
+            <p class="text-xs text-gray-400">OZ INTAKE</p>
         </div>
     </div>
 </div>
@@ -69,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('steps-value').textContent = data.steps.toLocaleString();
         document.getElementById('volume-value').textContent = data.volume_k + 'k lbs';
         document.getElementById('consumed-value').textContent = data.consumed.toLocaleString();
+        document.getElementById('water-value').textContent = data.water_ounces ? data.water_ounces.toFixed(1) : '0.0';
         logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         currentDate = data.date;
     }

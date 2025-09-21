@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     curl \
     netcat-traditional \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

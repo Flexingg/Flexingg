@@ -34,5 +34,8 @@ if [ "$1" = "gunicorn" ]; then
     python /app/Flexingg/manage.py collectstatic --noinput
 fi
 
+# Set timezone from environment variable
+export TZ=$TIMEZONE
+
 # Execute the main command
 exec "$@"

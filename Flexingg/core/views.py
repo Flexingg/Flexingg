@@ -296,6 +296,18 @@ class DataPriorityView(LoginRequiredMixin, View):
                 source='healthconnect',
                 defaults={'rank': 2}
             )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='water',
+                source='healthconnect',
+                defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=request.user,
+                data_type='water',
+                source='garmin',
+                defaults={'rank': 2}
+            )
             # Refresh queryset
             queryset = DataPriority.objects.filter(user=request.user)
         formset = DataPriorityFormSet(queryset=queryset)
@@ -422,22 +434,21 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context['total_calories'] = int(total_calories)
 
         # Total weight lifted
-        from liftosaur.models import Workout, WorkoutExercise
         total_weight_lifted = 0
         workouts = Workout.objects.filter(user=user)
         for workout in workouts:
-            for exercise in workout.exercises.all():
-                total_weight_lifted += exercise.get_volume(unit='lb')
+            total_weight_lifted += workout.get_total_volume_k() * 1000  # Convert from k lbs to lbs
         context['total_weight_lifted'] = int(total_weight_lifted)
 
         # Total sleep hours
-        from healthconnect.models import HealthConnectData
-        sleep_records = HealthConnectData.objects.filter(profile=user, method='sleep')
+        from .models import Sleep
+        sleep_records = Sleep.objects.filter(user=user)
         total_sleep_seconds = 0
         for record in sleep_records:
             if record.end_time and record.start_time:
                 total_sleep_seconds += (record.end_time - record.start_time).total_seconds()
         context['total_sleep_hours'] = round(total_sleep_seconds / 3600, 1) if total_sleep_seconds else 0
+
 
         # Next level XP (dynamic formula)
         next_level_xp = 10000 * user.level
@@ -461,6 +472,16 @@ class ProfileView(LoginRequiredMixin, TemplateView):
             xp = float(xp_sum) * 0.5 if xp_sum else 0
             days_ago = (timezone.now().date() - act.start_time_utc.date()).days
             relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            details = {
+                'activity_type': act.activity_type,
+                'start_time_utc': act.start_time_utc,
+                'duration_seconds': act.duration_seconds,
+                'distance_meters': act.distance_meters,
+                'calories': act.calories,
+                'average_hr': act.average_hr,
+                'max_hr': act.max_hr,
+                'synced_at': act.synced_at,
+            }
             recent_activities.append({
                 'type': 'cardio',
                 'name': act.name or act.activity_type,
@@ -470,7 +491,8 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'unit': unit,
                 'duration': round(duration),
                 'xp': round(xp, 0),
-                'sort_date': act.start_time_utc
+                'sort_date': act.start_time_utc,
+                'details': details
             })
 
         # Lifting workouts
@@ -487,6 +509,42 @@ class ProfileView(LoginRequiredMixin, TemplateView):
             xp = float(xp_sum) * 0.5 if xp_sum else 0
             days_ago = (timezone.now().date() - workout.timestamp.date()).days
             relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            exercises_details = []
+            for ex in workout.exercises.all():
+                sets_details = []
+                for set_obj in ex.sets.all():
+                    sets_details.append({
+                        'reps': set_obj.reps,
+                        'weight_value': set_obj.weight_value,
+                        'weight_unit': set_obj.weight_unit,
+                        'completed_reps': set_obj.completed_reps,
+                        'completed_weight_value': set_obj.completed_weight_value,
+                        'completed_weight_unit': set_obj.completed_weight_unit,
+                        'rpe': set_obj.rpe,
+                        'completed_rpe': set_obj.completed_rpe,
+                        'is_completed': set_obj.is_completed,
+                        'is_amrap': set_obj.is_amrap,
+                        'is_warmup': set_obj.is_warmup,
+                        'notes': set_obj.notes,
+                    })
+                exercises_details.append({
+                    'exercise_name': ex.exercise_name,
+                    'note': ex.note,
+                    'timestamp': ex.timestamp,
+                    'successes': ex.successes,
+                    'failures': ex.failures,
+                    'sets': sets_details,
+                    'volume': ex.get_volume('lb'),
+                })
+            details = {
+                'source': workout.source,
+                'start_time': workout.start_time,
+                'end_time': workout.end_time,
+                'duration_seconds': workout.duration_seconds,
+                'data': workout.data,
+                'exercises': exercises_details,
+                'total_volume': total_volume,
+            }
             recent_activities.append({
                 'type': 'lift',
                 'name': workout.name or 'Lifting Session',
@@ -496,7 +554,8 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'unit': 'lbs',
                 'duration': None,
                 'xp': xp,
-                'sort_date': workout.timestamp
+                'sort_date': workout.timestamp,
+                'details': details
             })
 
         # Sort by date descending
