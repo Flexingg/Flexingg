@@ -5,6 +5,14 @@ from django.urls import reverse
 from django.db.models import Q
 from .models import Friendship, Group, GroupMembership
 from django import forms
+from liftosaur.models import Workout, WorkoutExercise, WorkoutSet
+from django.db.models import Sum, F, Value, IntegerField, DecimalField
+from django.db.models.functions import Coalesce
+from django.db.models import FloatField
+from core.models import *
+from datetime import timedelta, date
+from django.utils import timezone
+from django.db.models import FloatField
 
 def calculate_lift_volume(user, since_date):
     """
@@ -215,15 +223,16 @@ def social_main(request):
         users = UserProfile.objects.all()
 
     available_metrics = {
-        'steps': {'field': Sum('garmin_daily_steps__steps', filter=Q(garmin_daily_steps__date__gte=cutoff)), 'label': 'Steps', 'default': 0, 'output_field': IntegerField()},
-        'lifts': {'field': Value(0), 'label': 'Volume Lifted', 'default': 0.0, 'output_field': FloatField()},
-        'calories': {'field': Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__date__gte=cutoff)), 'label': 'Calories Burned', 'default': 0.0, 'output_field': FloatField()},
-        'coins': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='cardio_coins', transactions__created_at__date__gte=cutoff)), 'label': 'Coins', 'default': 0.0, 'output_field': DecimalField()},
-        'gems': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='gym_gems', transactions__created_at__date__gte=cutoff)), 'label': 'Gems', 'default': 0.0, 'output_field': DecimalField()},
-        'sleep': {'field': Value(0), 'label': 'Sleep', 'default': 0, 'output_field': IntegerField()},
-        'consumed': {'field': Value(0), 'label': 'Consumed', 'default': 0, 'output_field': IntegerField()},
-        'water': {'field': Value(0), 'label': 'Water', 'default': 0, 'output_field': IntegerField()},
+    'steps': {'field': Sum('garmin_daily_steps__steps', filter=Q(garmin_daily_steps__date__gte=cutoff)), 'label': 'Steps', 'default': 0, 'output_field': IntegerField()},
+    'lifts': {'field': Value(0), 'label': 'lbs Lifted', 'default': 0.0, 'output_field': FloatField()},
+    'calories': {'field': Sum('garmin_activities__calories', filter=Q(garmin_activities__start_time_utc__date__gte=cutoff)), 'label': 'Calories Burned', 'default': 0.0, 'output_field': FloatField()},
+    'coins': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='cardio_coins', transactions__created_at__date__gte=cutoff)), 'label': 'Coins', 'default': 0.0, 'output_field': DecimalField()},
+    'gems': {'field': Sum('transactions__amount', filter=Q(transactions__currency_type='gym_gems', transactions__created_at__date__gte=cutoff)), 'label': 'Gems', 'default': 0.0, 'output_field': DecimalField()},
+    'sleep': {'field': Value(0), 'label': 'Hours Slept', 'default': 0, 'output_field': IntegerField()},
+    'consumed': {'field': Sum('unified_nutrition__calories', filter=Q(unified_nutrition__datetime__date__gte=cutoff)), 'label': 'Calories Consumed', 'default': 0.0, 'output_field': FloatField()},
+    'water': {'field': Sum('unified_water__amount_ounces', filter=Q(unified_water__date__gte=cutoff)), 'label': 'Oz of Water Drank', 'default': 0.0, 'output_field': FloatField()},
     }
+
 
     if current_category not in available_metrics:
         current_category = 'steps'
@@ -235,8 +244,20 @@ def social_main(request):
         annotated_users = users.annotate(
             metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
         )
-        volumes = {u.id: calculate_lift_volume(u, cutoff) for u in users}
-        sorted_users = sorted(annotated_users, key=lambda u: volumes.get(u.id, 0), reverse=True)
+        
+        # Calculate total lift volume for each user
+        lift_volumes = {}
+        for user in users:
+            workouts = Workout.objects.filter(
+                user=user, 
+                start_time__date__gte=cutoff
+            )
+            total_volume = 0
+            for workout in workouts:
+                total_volume += workout.get_total_volume(unit='lb')
+            lift_volumes[user.id] = total_volume
+        
+        sorted_users = sorted(annotated_users, key=lambda u: lift_volumes.get(u.id, 0), reverse=True)
 
         # Top 5 for podium
         users_query = sorted_users[:5]
@@ -244,7 +265,7 @@ def social_main(request):
             {
                 'rank': i + 1,
                 'name': u.username,
-                'metric_value': volumes[u.id],
+                'metric_value': lift_volumes[u.id],
                 'avatar': u.avatar.url if u.avatar else None
             }
             for i, u in enumerate(users_query)
@@ -256,13 +277,103 @@ def social_main(request):
             {
                 'rank': i + 1,
                 'name': u.username,
-                'metric_value': volumes[u.id],
+                'metric_value': lift_volumes[u.id],
                 'avatar': u.avatar.url if u.avatar else None
             }
             for i, u in enumerate(list_users_query)
         ]
         list_users = list_users[3:] if len(list_users) > 3 else []
-    if current_category == 'sleep':
+    elif current_category == 'consumed':
+        # Annotate with placeholder for consistency, but override with computation
+        annotated_users = users.annotate(
+            metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
+        )
+        
+        # Calculate total consumed calories for each user
+        consumed_calories = {}
+        for user in users:
+            nutrition_entries = NutritionEntry.objects.filter(
+                user=user, 
+                datetime__date__gte=cutoff
+            )
+            total_calories = 0
+            for entry in nutrition_entries:
+                if entry.calories:
+                    total_calories += float(entry.calories)
+            consumed_calories[user.id] = total_calories
+        
+        sorted_users = sorted(annotated_users, key=lambda u: consumed_calories.get(u.id, 0), reverse=True)
+        
+        # Top 5 for podium
+        users_query = sorted_users[:5]
+        users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': consumed_calories[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(users_query)
+        ]
+        
+        # Top 10 for list
+        list_users_query = sorted_users[:10]
+        list_users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': consumed_calories[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(list_users_query)
+        ]
+        list_users = list_users[3:] if len(list_users) > 3 else []
+    elif current_category == 'water':
+        # Annotate with placeholder for consistency, but override with computation
+        annotated_users = users.annotate(
+            metric_value=Coalesce(info['field'], Value(info['default']), output_field=info['output_field'])
+        )
+        
+        # Calculate total water consumed for each user
+        water_amounts = {}
+        for user in users:
+            water_entries = DailyWater.objects.filter(
+                user=user, 
+                date__gte=cutoff
+            )
+            total_water = 0
+            for entry in water_entries:
+                total_water += float(entry.amount_ounces)
+            water_amounts[user.id] = total_water
+        
+        sorted_users = sorted(annotated_users, key=lambda u: water_amounts.get(u.id, 0), reverse=True)
+        
+        # Top 5 for podium
+        users_query = sorted_users[:5]
+        users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': water_amounts[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(users_query)
+        ]
+        
+        # Top 10 for list
+        list_users_query = sorted_users[:10]
+        list_users = [
+            {
+                'rank': i + 1,
+                'name': u.username,
+                'metric_value': water_amounts[u.id],
+                'avatar': u.avatar.url if u.avatar else None
+            }
+            for i, u in enumerate(list_users_query)
+        ]
+        list_users = list_users[3:] if len(list_users) > 3 else []
+
+    elif current_category == 'sleep':
         # Calculate sleep duration manually since we can't sum JSON fields
         from core.models import Sleep
         from django.db.models import F, ExpressionWrapper, DurationField
