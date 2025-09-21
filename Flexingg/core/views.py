@@ -45,6 +45,7 @@ class HomeView(TemplateView):
             context['total_gems'] = profile.gym_gems
             context['total_coins'] = profile.cardio_coins
             context['level'] = profile.level
+            recent_activities = []
 
             # Data sources sync debounce logic
             debounce_minutes = getattr(profile, 'sync_debounce_minutes', 30)
@@ -118,6 +119,89 @@ class HomeView(TemplateView):
             context['todays_steps'] = 0
             context['todays_lifting_volume_k'] = 0
             context['todays_consumed_calories'] = 0
+
+        # Add recent sleep entries
+        user = self.request.user
+        recent_sleep = Sleep.objects.filter(user=user).order_by('-start_time')[:2]
+        for sleep in recent_sleep:
+            if sleep.end_time and sleep.start_time:
+                sleep_hours = (sleep.end_time - sleep.start_time).total_seconds() / 3600
+                days_ago = (timezone.now().date() - sleep.start_time.date()).days
+                relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+                details = {
+                    'source': sleep.source,
+                    'start_time': sleep.start_time,
+                    'end_time': sleep.end_time,
+                    'data': sleep.data,
+                }
+                recent_activities.append({
+                    'type': 'sleep',
+                    'name': 'Sleep Session',
+                    'relative_date': relative_date,
+                    'time': sleep.start_time.strftime('%I:%M %p'),
+                    'metric': round(sleep_hours, 1),
+                    'unit': 'hrs',
+                    'duration': None,
+                    'xp': 0,  # Sleep doesn't give XP in this system
+                    'sort_date': sleep.start_time if sleep.start_time.tzinfo else timezone.make_aware(sleep.start_time),
+                    'details': details
+                })
+
+        # Add recent water intake entries
+        recent_water = DailyWater.objects.filter(user=user).order_by('-date')[:2]
+        for water in recent_water:
+            days_ago = (timezone.now().date() - water.date).days
+            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            details = {
+                'source': water.source,
+                'date': water.date,
+                'amount_ounces': water.amount_ounces,
+                'data': water.data,
+            }
+            recent_activities.append({
+                'type': 'water',
+                'name': 'Water Intake',
+                'relative_date': relative_date,
+                'time': 'Daily Total',
+                'metric': round(float(water.amount_ounces), 1),
+                'unit': 'oz',
+                'duration': None,
+                'xp': 0,  # Water intake doesn't give XP
+                'sort_date': timezone.make_aware(timezone.datetime.combine(water.date, timezone.datetime.min.time())),
+                'details': details
+            })
+
+        # Add recent nutrition entries
+        recent_nutrition = NutritionEntry.objects.filter(user=user).order_by('-datetime')[:2]
+        for nutrition in recent_nutrition:
+            days_ago = (timezone.now().date() - nutrition.datetime.date()).days
+            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            details = {
+                'source': nutrition.source,
+                'datetime': nutrition.datetime,
+                'food_name': nutrition.food_name,
+                'calories': nutrition.calories,
+                'protein_grams': nutrition.protein_grams,
+                'fat_grams': nutrition.fat_grams,
+                'carbs_grams': nutrition.carbs_grams,
+                'data': nutrition.data,
+            }
+            recent_activities.append({
+                'type': 'nutrition',
+                'name': nutrition.food_name,
+                'relative_date': relative_date,
+                'time': nutrition.datetime.strftime('%I:%M %p'),
+                'metric': round(float(nutrition.calories or 0), 0),
+                'unit': 'cal',
+                'duration': None,
+                'xp': 0,  # Nutrition doesn't give XP in this system
+                'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
+                'details': details
+            })
+
+        # Sort by date descending
+        recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
+        context['recent_activities'] = recent_activities[:5]
 
         return context
 
@@ -459,7 +543,16 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         # Total calories burned
         from garminconnect.models import GarminActivity
         from django.db.models import Sum
-        total_calories = GarminActivity.objects.filter(user=user).aggregate(Sum('calories'))['calories__sum'] or 0
+        # Get calories from unified workouts (all sources)
+        workouts = Workout.objects.filter(user=user)
+        total_calories = 0
+        for workout in workouts:
+            if workout.data and 'calories' in workout.data:
+                total_calories += workout.data['calories']
+
+        # Also include Garmin activities for backward compatibility
+        garmin_calories = GarminActivity.objects.filter(user=user).aggregate(Sum('calories'))['calories__sum'] or 0
+        total_calories += garmin_calories
         context['total_calories'] = int(total_calories)
 
         # Total weight lifted
@@ -477,6 +570,18 @@ class ProfileView(LoginRequiredMixin, TemplateView):
             if record.end_time and record.start_time:
                 total_sleep_seconds += (record.end_time - record.start_time).total_seconds()
         context['total_sleep_hours'] = round(total_sleep_seconds / 3600, 1) if total_sleep_seconds else 0
+
+        # Total water intake
+        from .models import DailyWater
+        total_water_ounces = DailyWater.objects.filter(user=user).aggregate(Sum('amount_ounces'))['amount_ounces__sum'] or 0
+        context['total_water_ounces'] = round(float(total_water_ounces), 1)
+
+        # Total nutrition data
+        from .models import NutritionEntry
+        total_calories_consumed = NutritionEntry.objects.filter(user=user).aggregate(Sum('calories'))['calories__sum'] or 0
+        total_protein_grams = NutritionEntry.objects.filter(user=user).aggregate(Sum('protein_grams'))['protein_grams__sum'] or 0
+        context['total_calories_consumed'] = round(float(total_calories_consumed), 0)
+        context['total_protein_grams'] = round(float(total_protein_grams), 1)
 
 
         # Next level XP (dynamic formula)
@@ -520,7 +625,7 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'unit': unit,
                 'duration': round(duration),
                 'xp': round(xp, 0),
-                'sort_date': act.start_time_utc,
+                'sort_date': act.start_time_utc if act.start_time_utc.tzinfo else timezone.make_aware(act.start_time_utc),
                 'details': details
             })
 
@@ -583,7 +688,90 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'unit': 'lbs',
                 'duration': None,
                 'xp': xp,
-                'sort_date': workout.start_time,
+                'sort_date': workout.start_time if workout.start_time.tzinfo else timezone.make_aware(workout.start_time),
+                'details': details
+            })
+
+        # Sort by date descending
+        recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
+        context['recent_activities'] = recent_activities[:5]
+
+        # Add recent sleep entries
+        user = self.request.user
+        recent_sleep = Sleep.objects.filter(user=user).order_by('-start_time')[:2]
+        for sleep in recent_sleep:
+            if sleep.end_time and sleep.start_time:
+                sleep_hours = (sleep.end_time - sleep.start_time).total_seconds() / 3600
+                days_ago = (timezone.now().date() - sleep.start_time.date()).days
+                relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+                details = {
+                    'source': sleep.source,
+                    'start_time': sleep.start_time,
+                    'end_time': sleep.end_time,
+                    'data': sleep.data,
+                }
+                recent_activities.append({
+                    'type': 'sleep',
+                    'name': 'Sleep Session',
+                    'relative_date': relative_date,
+                    'time': sleep.start_time.strftime('%I:%M %p'),
+                    'metric': round(sleep_hours, 1),
+                    'unit': 'hrs',
+                    'duration': None,
+                    'xp': 0,  # Sleep doesn't give XP in this system
+                    'sort_date': sleep.start_time if sleep.start_time.tzinfo else timezone.make_aware(sleep.start_time),
+                    'details': details
+                })
+
+        # Add recent water intake entries
+        recent_water = DailyWater.objects.filter(user=user).order_by('-date')[:2]
+        for water in recent_water:
+            days_ago = (timezone.now().date() - water.date).days
+            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            details = {
+                'source': water.source,
+                'date': water.date,
+                'amount_ounces': water.amount_ounces,
+                'data': water.data,
+            }
+            recent_activities.append({
+                'type': 'water',
+                'name': 'Water Intake',
+                'relative_date': relative_date,
+                'time': 'Daily Total',
+                'metric': round(float(water.amount_ounces), 1),
+                'unit': 'oz',
+                'duration': None,
+                'xp': 0,  # Water intake doesn't give XP
+                'sort_date': timezone.make_aware(timezone.datetime.combine(water.date, timezone.datetime.min.time())),
+                'details': details
+            })
+
+        # Add recent nutrition entries
+        recent_nutrition = NutritionEntry.objects.filter(user=user).order_by('-datetime')[:2]
+        for nutrition in recent_nutrition:
+            days_ago = (timezone.now().date() - nutrition.datetime.date()).days
+            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+            details = {
+                'source': nutrition.source,
+                'datetime': nutrition.datetime,
+                'food_name': nutrition.food_name,
+                'calories': nutrition.calories,
+                'protein_grams': nutrition.protein_grams,
+                'fat_grams': nutrition.fat_grams,
+                'carbs_grams': nutrition.carbs_grams,
+                'data': nutrition.data,
+            }
+            recent_activities.append({
+                'type': 'nutrition',
+                'name': nutrition.food_name,
+                'relative_date': relative_date,
+                'time': nutrition.datetime.strftime('%I:%M %p'),
+                'metric': round(float(nutrition.calories or 0), 0),
+                'unit': 'cal',
+                'duration': None,
+                'xp': 0,  # Nutrition doesn't give XP in this system
+                'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
                 'details': details
             })
 

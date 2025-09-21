@@ -62,13 +62,42 @@
                     <p class="font-pixel text-xl text-white mt-1">{{ total_weight_lifted }} lbs</p>
                 </div>
             </div>
-            <div class="stat-card p-4 flex items-center space-x-3">
+                        <div class="stat-card p-4 flex items-center space-x-3">
                 <svg class="w-8 h-8 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
                 <div>
                     <p class="font-pixel text-sm text-gray-400">Total Sleep</p>
                     <p class="font-pixel text-xl text-white mt-1">{{ total_sleep_hours }} hrs</p>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- Additional Stats -->
+    <section>
+        <h3 class="font-pixel text-lg text-[#00f5d4]">HEALTH & NUTRITION</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m0 0V1a1 1 0 011-1h2a1 1 0 011 1v2M7 4h10M5 8h14M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Water Intake</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_water_ounces }} oz</p>
+                </div>
+            </div>
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Calories Consumed</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_calories_consumed }} cal</p>
+                </div>
+            </div>
+            <div class="stat-card p-4 flex items-center space-x-3">
+                <svg class="w-8 h-8 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2 2z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h4a2 2 0 012 2v2H8V5z"></path></svg>
+                <div>
+                    <p class="font-pixel text-sm text-gray-400">Protein Intake</p>
+                    <p class="font-pixel text-xl text-white mt-1">{{ total_protein_grams }}g</p>
+                </div>
+            </div>
+        </div>
         </div>
     </section>
     
@@ -80,7 +109,7 @@
             <div class="pixel-border bg-[#2a2a2a] p-4 cursor-pointer hover:bg-[#333] transition-colors" onclick="showActivityPopup({{ forloop.counter0 }})">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="font-pixel text-sm {% if activity.type == 'cardio' and activity.unit == 'mi' %}text-cyan-300{% elif activity.type == 'lift' %}text-red-400{% else %}text-blue-300{% endif %}">{{ activity.name }}</p>
+                        <p class="font-pixel text-sm {% if activity.type == 'cardio' and activity.unit == 'mi' %}text-cyan-300{% elif activity.type == 'lift' %}text-red-400{% elif activity.type == 'sleep' %}text-purple-400{% elif activity.type == 'water' %}text-blue-400{% elif activity.type == 'nutrition' %}text-green-400{% else %}text-blue-300{% endif %}">{{ activity.name }}</p>
                         <p class="text-xs text-gray-400 mt-1">{{ activity.relative_date }} - {{ activity.time }}</p>
                     </div>
                     <div class="text-right">
@@ -167,7 +196,7 @@
                     </div>
                 </div>
             `;
-        } else if (activity.type === 'lift') {
+                } else if (activity.type === 'lift') {
             const details = activity.details;
             content.innerHTML = `
                 <div class="space-y-4">
@@ -217,11 +246,101 @@
                     </div>
                 </div>
             `;
+        } else if (activity.type === 'sleep') {
+            const details = activity.details;
+            content.innerHTML = `
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Source</p>
+                            <p class="font-pixel text-white">${details.source}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Start Time</p>
+                            <p class="font-pixel text-white">${new Date(details.start_time).toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">End Time</p>
+                            <p class="font-pixel text-white">${new Date(details.end_time).toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Duration</p>
+                            <p class="font-pixel text-white">${activity.metric} hours</p>
+                        </div>
+                    </div>
+                    ${details.data ? `<div>
+                        <p class="font-pixel text-sm text-gray-400">Additional Data</p>
+                        <pre class="text-xs text-gray-300 bg-[#1a1a1a] p-2 mt-1">${JSON.stringify(details.data, null, 2)}</pre>
+                    </div>` : ''}
+                </div>
+            `;
+        } else if (activity.type === 'water') {
+            const details = activity.details;
+            content.innerHTML = `
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Source</p>
+                            <p class="font-pixel text-white">${details.source}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Date</p>
+                            <p class="font-pixel text-white">${new Date(details.date).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Total Intake</p>
+                            <p class="font-pixel text-white">${details.amount_ounces} oz</p>
+                        </div>
+                    </div>
+                    ${details.data ? `<div>
+                        <p class="font-pixel text-sm text-gray-400">Additional Data</p>
+                        <pre class="text-xs text-gray-300 bg-[#1a1a1a] p-2 mt-1">${JSON.stringify(details.data, null, 2)}</pre>
+                    </div>` : ''}
+                </div>
+            `;
+        } else if (activity.type === 'nutrition') {
+            const details = activity.details;
+            content.innerHTML = `
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Source</p>
+                            <p class="font-pixel text-white">${details.source}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Time</p>
+                            <p class="font-pixel text-white">${new Date(details.datetime).toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Food</p>
+                            <p class="font-pixel text-white">${details.food_name}</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Calories</p>
+                            <p class="font-pixel text-white">${details.calories || 'N/A'} cal</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Protein</p>
+                            <p class="font-pixel text-white">${details.protein_grams || 'N/A'}g</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Fat</p>
+                            <p class="font-pixel text-white">${details.fat_grams || 'N/A'}g</p>
+                        </div>
+                        <div>
+                            <p class="font-pixel text-sm text-gray-400">Carbs</p>
+                            <p class="font-pixel text-white">${details.carbs_grams || 'N/A'}g</p>
+                        </div>
+                    </div>
+                    ${details.data ? `<div>
+                        <p class="font-pixel text-sm text-gray-400">Additional Data</p>
+                        <pre class="text-xs text-gray-300 bg-[#1a1a1a] p-2 mt-1">${JSON.stringify(details.data, null, 2)}</pre>
+                    </div>` : ''}
+                </div>
+            `;
+            }
+            modal.classList.remove('hidden');
         }
-
-        modal.classList.remove('hidden');
-    }
-
     function closeActivityPopup() {
         document.getElementById('activity-modal').classList.add('hidden');
     }

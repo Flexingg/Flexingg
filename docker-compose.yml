@@ -14,7 +14,7 @@ services:
        sh -c "cd Flexingg &&
               python manage.py makemigrations --noinput &&
               python manage.py migrate --noinput &&
-              gunicorn --bind 0.0.0.0:8000 --reload Flexingg.wsgi:application"
+              gunicorn --bind 0.0.0.0:8000 --reload --reload-engine=poll Flexingg.wsgi:application"
     volumes:
       - .:/app
       - ./media:/app/Flexingg/media
