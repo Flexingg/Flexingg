@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Flexin.gg - World Event{% endblock %}
+{% block title %}Flexin.gg - Gym Challenge{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.tailwindcss.com"></script>
@@ -9,217 +9,426 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-    body { font-family: 'Inter', sans-serif; background-color: #121212; color: #E0E0E0; }
-    .font-pixel { font-family: 'Press Start 2P', cursive; }
-    .pixel-border { border: 4px solid #444; box-shadow: inset -4px -4px 0px 0px #222, inset 4px 4px 0px 0px #555; image-rendering: pixelated; }
-    .pixel-button { border: 4px solid #333; background-color: #2a2a2a; box-shadow: inset -4px -4px 0px 0px #1a1a1a, 4px 4px 0px 0px #000; transition: all 0.1s ease-in-out; }
-    .pixel-button:active { transform: translate(4px, 4px); box-shadow: inset -2px -2px 0px 0px #1a1a1a; }
+    /* Fitness Gym Theme */
+    .gym-world {
+        background: #000000;
+        min-height: 100vh;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .gym-world::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            radial-gradient(circle at 20% 30%, rgba(255, 193, 7, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 70%, rgba(0, 245, 212, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 40% 80%, rgba(0, 187, 249, 0.1) 0%, transparent 50%);
+        pointer-events: none;
+    }
 
-    .map-node { transition: transform 0.2s ease-out; }
-    .map-node:hover { transform: scale(1.1); }
-    .path-segment:hover { background-color: rgba(255, 255, 255, 0.1); }
-    .active-gym {
-        animation: glowing-border 2s infinite;
-        border-color: #f7b801;
+    /* Gym Badge Icons */
+    .gym-badge {
+        width: clamp(60px, 8vw, 100px);
+        height: clamp(60px, 8vw, 100px);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        border: 4px solid;
+        box-shadow: 
+            inset -4px -4px 0px 0px rgba(0,0,0,0.3),
+            inset 4px 4px 0px 0px rgba(255,255,255,0.1),
+            0 0 20px rgba(0,0,0,0.5);
+        image-rendering: pixelated;
     }
-    @keyframes glowing-border {
-        0% { box-shadow: 0 0 5px 0px #f7b801; }
-        50% { box-shadow: 0 0 15px 5px #f7b801; }
-        100% { box-shadow: 0 0 5px 0px #f7b801; }
+    
+    .gym-badge:hover {
+        transform: scale(1.1);
+    }
+    
+    .gym-badge.completed {
+        animation: badge-glow 2s ease-in-out infinite alternate;
+    }
+    
+    @keyframes badge-glow {
+        0% { box-shadow: inset -4px -4px 0px 0px rgba(0,0,0,0.3), inset 4px 4px 0px 0px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.5), 0 0 30px currentColor; }
+        100% { box-shadow: inset -4px -4px 0px 0px rgba(0,0,0,0.3), inset 4px 4px 0px 0px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.5), 0 0 50px currentColor; }
     }
 
-    /* Responsive adjustments for gym map */
-    .gym-map-wrapper {
-        width: 100%;
+    /* Gym Types - Fitness themed colors */
+    .gym-type-beginner { border-color: #22C55E; background: linear-gradient(135deg, #16A34A, #15803D); color: #FFFFFF; }
+    .gym-type-power { border-color: #F59E0B; background: linear-gradient(135deg, #D97706, #92400E); color: #FFFFFF; }
+    .gym-type-endurance { border-color: #3B82F6; background: linear-gradient(135deg, #2563EB, #1D4ED8); color: #FFFFFF; }
+    .gym-type-legendary { border-color: #DC2626; background: linear-gradient(135deg, #B91C1C, #991B1B); color: #FBBF24; }
+    
+    .gym-type-beginner.completed { border-color: #22C55E; }
+    .gym-type-power.completed { border-color: #F59E0B; }
+    .gym-type-endurance.completed { border-color: #3B82F6; }
+    .gym-type-legendary.completed { border-color: #DC2626; }
+
+    /* World Map Grid */
+    .world-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+        position: relative;
+        z-index: 10;
     }
-    @media (max-width: 767px) {
-        .gym-map-wrapper {
-            max-width: 20rem;
-            margin: 0 auto;
+
+    /* Connection Lines */
+    .gym-connection {
+        position: absolute;
+        height: 4px;
+        background: linear-gradient(90deg, transparent, #FFD700, transparent);
+        opacity: 0.6;
+        transform-origin: center;
+        animation: connection-pulse 3s ease-in-out infinite;
+        z-index: 5;
+    }
+    
+    @keyframes connection-pulse {
+        0%, 100% { opacity: 0.3; transform: scaleX(0.8); }
+        50% { opacity: 0.8; transform: scaleX(1.2); }
+    }
+
+    /* Progress Path */
+    .progress-path {
+        position: absolute;
+        width: 6px;
+        background: linear-gradient(to bottom, 
+            rgba(255, 193, 7, 0.8) 0%, 
+            rgba(255, 193, 7, 0.4) 50%, 
+            rgba(255, 193, 7, 0.8) 100%);
+        border-radius: 3px;
+        box-shadow: 0 0 15px rgba(255, 193, 7, 0.5);
+        animation: path-flow 4s linear infinite;
+        z-index: 6;
+    }
+    
+    @keyframes path-flow {
+        0% { background-position: 0% 0%; }
+        100% { background-position: 0% 100%; }
+    }
+
+    /* Info Panel */
+    .info-panel {
+        background: rgba(42, 42, 42, 0.95);
+        border: 4px solid #444;
+        box-shadow: 
+            inset -4px -4px 0px 0px rgba(0,0,0,0.3),
+            inset 4px 4px 0px 0px rgba(255,255,255,0.1),
+            0 0 30px rgba(0,0,0,0.7);
+        border-radius: 0;
+        padding: 1.5rem;
+        max-width: 400px;
+        margin: 0 auto;
+        image-rendering: pixelated;
+    }
+
+    /* Status Indicators */
+    .status-locked {
+        opacity: 0.5;
+        filter: grayscale(100%);
+    }
+    
+    .status-available {
+        animation: available-pulse 2s ease-in-out infinite;
+    }
+    
+    .status-current {
+        animation: current-glow 2s ease-in-out infinite alternate;
+    }
+    
+    @keyframes available-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    
+    @keyframes current-glow {
+        0% { box-shadow: inset -4px -4px 0px 0px rgba(0,0,0,0.3), inset 4px 4px 0px 0px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.5), 0 0 30px #FFD700; }
+        100% { box-shadow: inset -4px -4px 0px 0px rgba(0,0,0,0.3), inset 4px 4px 0px 0px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.5), 0 0 50px #FFD700; }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 640px) {
+        .world-grid {
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+            padding: 1rem;
         }
-        #map-container {
-            height: calc(100vh - 12rem); /* Adjust for header and mobile nav */
+        
+        .gym-badge {
+            width: clamp(50px, 12vw, 80px);
+            height: clamp(50px, 12vw, 80px);
         }
-        .mobile-header {
-            display: block;
+        
+        .info-panel {
+            margin: 0 1rem;
+            padding: 1rem;
         }
     }
+
     @media (min-width: 768px) {
-        #map-container {
-            height: 80vh; /* Shorter for desktop */
+        .world-grid {
+            grid-template-columns: repeat(2, 1fr);
+            max-width: 600px;
         }
-        .mobile-header {
-            display: none;
+    }
+
+    @media (min-width: 1024px) {
+        .world-grid {
+            grid-template-columns: repeat(2, 1fr);
+            max-width: 700px;
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Mobile/Desktop Screen Container -->
-<div class="gym-map-wrapper flex flex-col h-full overflow-hidden">
-    <!-- Mobile Header -->
-    <header class="mobile-header p-4 flex-shrink-0">
-         <h3 class="font-pixel text-2xl text-center text-[#f7b801] pt-2">WORLD EVENT</h3>
-    </header>
-     
-    <!-- World Map -->
-    <main class="flex-grow overflow-y-auto overflow-x-hidden">
-        <div id="map-container" class="relative w-full bg-gradient-to-b from-blue-800 via-green-800 to-yellow-900">
-            <!-- Dotted Path Line (Visual Only) -->
-            <div class="absolute top-0 bottom-0 left-1/2 -ml-0.5 w-1 border-l-4 border-dashed border-gray-900/50"></div>
-
-            <!-- Clickable Path Segments -->
-            <div class="path-segment map-node absolute bottom-[5%] h-[25%] left-[calc(50%-20px)] w-[40px] cursor-pointer rounded-md" data-path-id="path-1"></div>
-            <div class="path-segment map-node absolute bottom-[30%] h-[25%] left-[calc(50%-20px)] w-[40px] cursor-pointer rounded-md" data-path-id="path-2"></div>
-            <div class="path-segment map-node absolute bottom-[55%] h-[25%] left-[calc(50%-20px)] w-[40px] cursor-pointer rounded-md" data-path-id="path-3"></div>
-
-            <!-- Gym Nodes (Placed on top of path segments) -->
-            <div class="map-node absolute bottom-[5%] left-[40%] cursor-pointer" data-gym-id="grunt-gym">
-                <div id="gym-1" class="pixel-border bg-gray-600 w-20 h-20 flex items-center justify-center active-gym">
-                    <p class="font-pixel text-3xl">1</p>
-                </div>
-            </div>
-
-            <div class="map-node absolute bottom-[30%] right-[40%] cursor-pointer" data-gym-id="iron-den">
-                 <div class="pixel-border bg-gray-600 w-20 h-20 flex items-center justify-center">
-                    <p class="font-pixel text-3xl">2</p>
-                </div>
-            </div>
-
-             <div class="map-node absolute bottom-[55%] left-[40%] cursor-pointer" data-gym-id="peak-performance">
-                 <div class="pixel-border bg-gray-600 w-20 h-20 flex items-center justify-center">
-                    <p class="font-pixel text-3xl">3</p>
-                </div>
-             </div>
-             
-             <div class="map-node absolute bottom-[80%] left-[calc(50%-48px)] cursor-pointer" data-gym-id="olympus">
-                 <div class="pixel-border bg-yellow-600 w-24 h-24 flex items-center justify-center">
-                    <p class="font-pixel text-4xl">?</p>
-                </div>
-             </div>
-
-        </div>
-    </main>
-</div>
-
-<!-- Gym Modal -->
-<div id="gym-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80">
-    <div class="w-full max-w-xs mx-auto pixel-border bg-[#1c1c1c] p-4 text-white space-y-4">
-        <h3 id="gym-modal-title" class="font-pixel text-lg text-center text-yellow-300">GYM NAME</h3>
-        <div>
-            <h4 class="font-pixel text-sm text-gray-400">LEADER'S CHALLENGE</h4>
-            <p id="gym-modal-challenge" class="mt-1 text-base"></p>
-        </div>
-        <div id="gym-modal-progress-container" class="hidden">
-            <h4 class="font-pixel text-sm text-cyan-400">YOUR PROGRESS</h4>
-            <p id="gym-modal-progress" class="mt-1 text-lg font-pixel text-white"></p>
-        </div>
-         <div>
-            <h4 class="font-pixel text-sm text-gray-400">REWARDS</h4>
-            <p id="gym-modal-rewards" class="mt-1 text-base text-green-400"></p>
-        </div>
-        <button class="modal-close-button pixel-button w-full font-pixel text-base py-2 text-red-400">CLOSE</button>
+<div class="gym-world">
+    <!-- World Title -->
+    <div class="text-center py-6 relative z-10">
+        <h1 class="font-pixel text-3xl text-[#FFD700] mb-2">🏆 GYM 🏆</h1>
+        <p class="font-pixel text-sm text-gray-300">Conquer gyms to become the ultimate fitness champion!</p>
     </div>
-</div>
 
-<!-- Path Modal -->
-<div id="path-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80">
-     <div class="w-full max-w-xs mx-auto pixel-border bg-[#1c1c1c] p-4 text-white space-y-4">
-        <h3 class="font-pixel text-lg text-center text-cyan-300">TRAVEL REQUIREMENT</h3>
-        <div>
-            <p id="path-modal-description" class="text-center text-base"></p>
-            <p id="path-modal-steps" class="font-pixel text-2xl text-center mt-2"></p>
+    <!-- Gym World Map -->
+    <div class="world-grid">
+        <!-- Gym 1: Noob's Garage (COMPLETED) -->
+        <div class="gym-location flex flex-col items-center space-y-4">
+            <div class="gym-badge gym-type-beginner completed" data-gym-id="noob-garage">
+                <div class="text-center">
+                    <div class="font-pixel text-lg">1</div>
+                    <div class="font-pixel text-xs mt-1">NOOB</div>
+                </div>
+            </div>
+            <div class="text-center">
+                <h3 class="font-pixel text-sm text-[#22C55E] mb-1">Noob's Garage</h3>
+                <p class="font-pixel text-xs text-gray-400">The Newbie Badge</p>
+                <p class="font-pixel text-xs text-gray-500">Getting Started</p>
+                <p class="font-pixel text-xs text-[#22C55E]">✅ COMPLETED</p>
+            </div>
         </div>
-        <button class="modal-close-button pixel-button w-full font-pixel text-base py-2 text-red-400">CLOSE</button>
+
+        <!-- Gym 2: Swole House (IN PROGRESS) -->
+        <div class="gym-location flex flex-col items-center space-y-4">
+            <div class="gym-badge gym-type-power status-current" data-gym-id="swole-house">
+                <div class="text-center">
+                    <div class="font-pixel text-lg">2</div>
+                    <div class="font-pixel text-xs mt-1">SWOLE</div>
+                </div>
+            </div>
+            <div class="text-center">
+                <h3 class="font-pixel text-sm text-[#F59E0B] mb-1">Swole House</h3>
+                <p class="font-pixel text-xs text-gray-400">The Gainz Badge</p>
+                <p class="font-pixel text-xs text-gray-500">Building Power</p>
+                <p class="font-pixel text-xs text-[#F59E0B]">🔄 IN PROGRESS</p>
+            </div>
+        </div>
+
+        <!-- Gym 3: Cardio Cave -->
+        <div class="gym-location flex flex-col items-center space-y-4">
+            <div class="gym-badge gym-type-endurance status-locked" data-gym-id="cardio-cave">
+                <div class="text-center">
+                    <div class="font-pixel text-lg">3</div>
+                    <div class="font-pixel text-xs mt-1">CARDIO</div>
+                </div>
+            </div>
+            <div class="text-center">
+                <h3 class="font-pixel text-sm text-gray-400 mb-1">Cardio Cave</h3>
+                <p class="font-pixel text-xs text-gray-500">The Endurance Badge</p>
+                <p class="font-pixel text-xs text-gray-600">Heart & Lungs</p>
+                <p class="font-pixel text-xs text-gray-600">🔒 LOCKED</p>
+            </div>
+        </div>
+
+        <!-- Gym 4: Flex University -->
+        <div class="gym-location flex flex-col items-center space-y-4">
+            <div class="gym-badge gym-type-legendary status-locked" data-gym-id="flex-university">
+                <div class="text-center">
+                    <div class="font-pixel text-xl">?</div>
+                    <div class="font-pixel text-xs mt-1">FLEX U</div>
+                </div>
+            </div>
+            <div class="text-center">
+                <h3 class="font-pixel text-sm text-gray-400 mb-1">Flex University</h3>
+                <p class="font-pixel text-xs text-gray-500">The Master Badge</p>
+                <p class="font-pixel text-xs text-gray-600">Ultimate Challenge</p>
+                <p class="font-pixel text-xs text-gray-600">🔒 LOCKED</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Path -->
+    <div class="progress-path" style="top: 20%; left: 10%; height: 70%;"></div>
+
+    <!-- Gym Challenge Modal -->
+    <div id="gym-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80">
+        <div class="info-panel text-white">
+            <div class="text-center mb-4">
+                <h2 id="gym-modal-title" class="font-pixel text-xl text-[#FFD700] mb-2">GYM NAME</h2>
+                <p id="gym-modal-subtitle" class="font-pixel text-sm text-gray-300">Badge Challenge</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-pixel text-sm text-cyan-400 mb-2">🎯 LEADER'S CHALLENGE</h4>
+                    <p id="gym-modal-challenge" class="font-pixel text-sm text-gray-300"></p>
+                </div>
+                
+                <div>
+                    <h4 class="font-pixel text-sm text-green-400 mb-2">💎 REWARDS</h4>
+                    <p id="gym-modal-rewards" class="font-pixel text-sm text-gray-300"></p>
+                </div>
+                
+                <div>
+                    <h4 class="font-pixel text-sm text-yellow-400 mb-2">📊 YOUR PROGRESS</h4>
+                    <p id="gym-modal-progress" class="font-pixel text-sm text-gray-300"></p>
+                </div>
+                
+                <div class="text-center pt-4">
+                    <button class="modal-close-button pixel-button font-pixel text-sm py-2 px-4 text-red-400">
+                        ❌ CLOSE
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // --- MAP DATA ---
-    const mapData = {
+    // Gym Challenge Data
+    const gymData = {
         gyms: {
-            'grunt-gym': { name: "Grunt's Gym", challenge: "Burn 500 calories in a single workout session.", rewards: "+500 CardioCoins, +10 GymGems", progress: "Best Attempt: 412 cal" },
-            'iron-den': { name: "The Iron Den", challenge: "Lift a total volume of 20,000 lbs in a single week.", rewards: "+1000 CardioCoins, +25 GymGems", progress: "This week: 15,750 lbs" },
-            'peak-performance': { name: "Peak Performance Club", challenge: "Set a new personal record in any of the main lifts (Bench, Squat, Deadlift).", rewards: "+1500 CardioCoins, +50 GymGems, 1x Epic Gear Box", progress: "Awaiting new PR." },
-            'olympus': { name: "Mount Olympus", challenge: "???", rewards: "???" }
-        },
-        paths: {
-            'path-1': { description: "Steps required to reach The Iron Den:", steps: "10,000" },
-            'path-2': { description: "Steps required to reach Peak Performance:", steps: "25,000" },
-            'path-3': { description: "Steps required to reach Mount Olympus:", steps: "50,000" }
+            'noob-garage': {
+                name: "Noob's Garage",
+                subtitle: "The Newbie Badge",
+                challenge: "Complete 10 workouts in 7 days",
+                rewards: "+500 CardioCoins, +10 GymGems, Newbie Badge",
+                progress: "✅ COMPLETED - All workouts finished!",
+                type: "beginner",
+                unlocked: true,
+                completed: true
+            },
+            'swole-house': {
+                name: "Swole House", 
+                subtitle: "The Gainz Badge",
+                challenge: "Lift 50,000 lbs total volume in one week",
+                rewards: "+1000 CardioCoins, +25 GymGems, Gainz Badge",
+                progress: "🔄 IN PROGRESS - 32,450/50,000 lbs (64.9%)",
+                type: "power",
+                unlocked: true,
+                completed: false
+            },
+            'cardio-cave': {
+                name: "Cardio Cave",
+                subtitle: "The Endurance Badge", 
+                challenge: "Run 25 miles total distance in one week",
+                rewards: "+1500 CardioCoins, +50 GymGems, Endurance Badge",
+                progress: "🔒 LOCKED - Complete Swole House first",
+                type: "endurance",
+                unlocked: false,
+                completed: false
+            },
+            'flex-university': {
+                name: "Flex University",
+                subtitle: "The Master Badge",
+                challenge: "Complete all gym challenges + special elite workout",
+                rewards: "+5000 CardioCoins, +100 GymGems, Master Badge, Elite Gear",
+                progress: "🔒 LOCKED - Complete all previous gyms",
+                type: "legendary",
+                unlocked: false,
+                completed: false
+            }
         }
     };
 
-    // --- DOM ELEMENTS ---
+    // DOM Elements
     const gymModal = document.getElementById('gym-modal');
-    const pathModal = document.getElementById('path-modal');
-    const mapNodes = document.querySelectorAll('.map-node');
-    const progressContainer = document.getElementById('gym-modal-progress-container');
-    const progressText = document.getElementById('gym-modal-progress');
+    const gymBadges = document.querySelectorAll('.gym-badge');
+    const modalCloseButtons = document.querySelectorAll('.modal-close-button');
 
-    // --- MODAL FUNCTIONS ---
-    function openGymModal(gymId, isActive) {
-        const data = mapData.gyms[gymId];
+    // Modal Functions
+    function openGymModal(gymId) {
+        const data = gymData.gyms[gymId];
         if (!data) return;
+        
         document.getElementById('gym-modal-title').textContent = data.name;
+        document.getElementById('gym-modal-subtitle').textContent = data.subtitle;
         document.getElementById('gym-modal-challenge').textContent = data.challenge;
         document.getElementById('gym-modal-rewards').textContent = data.rewards;
+        document.getElementById('gym-modal-progress').textContent = data.progress;
         
-        if (isActive && data.progress) {
-            progressText.textContent = data.progress;
-            progressContainer.classList.remove('hidden');
-        } else {
-            progressContainer.classList.add('hidden');
-        }
-
         gymModal.classList.remove('hidden');
-    }
-
-    function openPathModal(pathId) {
-        const data = mapData.paths[pathId];
-        if (!data) return;
-        document.getElementById('path-modal-description').textContent = data.description;
-        document.getElementById('path-modal-steps').textContent = data.steps;
-        pathModal.classList.remove('hidden');
     }
 
     function closeModal() {
         gymModal.classList.add('hidden');
-        pathModal.classList.add('hidden');
     }
 
-    // --- EVENT LISTENERS ---
-    mapNodes.forEach(node => {
-        node.addEventListener('click', e => {
-            const target = e.currentTarget;
-            // Stop propagation if we clicked a gym so the path behind it doesn't also fire
-            if (target.dataset.gymId) {
-                 e.stopPropagation();
-            }
-           
-            if (target.dataset.gymId) {
-                const isActive = target.querySelector('.active-gym') !== null;
-                openGymModal(target.dataset.gymId, isActive);
-            } else if (target.dataset.pathId) {
-                openPathModal(target.dataset.pathId);
+    // Event Listeners
+    gymBadges.forEach(badge => {
+        badge.addEventListener('click', () => {
+            const gymId = badge.dataset.gymId;
+            const gymInfo = gymData.gyms[gymId];
+            
+            if (gymInfo && gymInfo.unlocked) {
+                openGymModal(gymId);
+            } else {
+                // Show locked message
+                alert('🚫 This gym is locked! Complete previous gyms first.');
             }
         });
     });
-    
-    document.querySelectorAll('.modal-close-button').forEach(button => {
+
+    modalCloseButtons.forEach(button => {
         button.addEventListener('click', closeModal);
     });
-    
-    gymModal.addEventListener('click', e => { if (e.target === gymModal) closeModal(); });
-    pathModal.addEventListener('click', e => { if (e.target === pathModal) closeModal(); });
 
-    // Scroll to the starting gym on load
-    window.onload = () => {
-        const mapContainer = document.querySelector('main');
-        mapContainer.scrollTop = mapContainer.scrollHeight;
-    };
+    gymModal.addEventListener('click', (e) => {
+        if (e.target === gymModal) closeModal();
+    });
+
+    // Add keyboard support
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !gymModal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+
+    // Add visual feedback for gym status
+    function updateGymStatus() {
+        gymBadges.forEach(badge => {
+            const gymId = badge.dataset.gymId;
+            const gymInfo = gymData.gyms[gymId];
+            
+            // Remove all status classes
+            badge.classList.remove('status-locked', 'status-available', 'status-current');
+            
+            if (gymInfo.completed) {
+                badge.classList.add('completed');
+            } else if (gymInfo.unlocked && !gymInfo.completed) {
+                badge.classList.add('status-current');
+            } else {
+                badge.classList.add('status-locked');
+            }
+        });
+    }
+
+    // Initialize
+    updateGymStatus();
 </script>
 {% endblock %}
