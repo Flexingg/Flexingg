@@ -442,6 +442,18 @@ input[type="password"].pixel-input:focus {
         </div>
     </div>
 
+    <!-- Include bodyweight prompt modal and auto-open when user has no synced weight -->
+    {% include 'bodyweight_prompt.html' %}
+    {% if show_bodyweight_prompt %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof openBodyweightPrompt === 'function') {
+                openBodyweightPrompt();
+            }
+        });
+    </script>
+    {% endif %}
+
     {{ component.media.js }}
     {% block scripts %}{% endblock scripts %}
 </body>

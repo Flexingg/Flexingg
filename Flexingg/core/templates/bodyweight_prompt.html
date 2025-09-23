@@ -1,0 +1,31 @@
+<!-- Bodyweight prompt modal -->
+<div id="bodyweight-prompt-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex items-center justify-center p-4">
+    <div class="pixel-border bg-[#2a2a2a] p-6 max-w-md w-full">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-pixel text-xl text-white">Enter your bodyweight</h3>
+            <button onclick="closeBodyweightPrompt()" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+
+        <form id="bodyweight-prompt-form" method="post" action="{% url 'fitness:bodyweight_submit' %}">
+            {% csrf_token %}
+            <p class="text-sm text-gray-400 mb-2">We use your bodyweight to normalize GymGems from lifting volume. You can update this later in Settings.</p>
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-gray-300 block mb-1" for="bodyweight_lbs">Bodyweight (lbs)</label>
+                <input id="bodyweight_lbs" name="bodyweight_lbs" type="number" step="0.1" min="1" required class="w-full p-2 bg-[#1a1a1a] border border-[#444] text-white">
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="closeBodyweightPrompt()" class="pixel-button px-4 py-2 text-sm">Skip</button>
+                <button type="submit" class="pixel-button px-4 py-2 text-sm bg-[#00f5d4]">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openBodyweightPrompt() {
+    document.getElementById('bodyweight-prompt-modal').classList.remove('hidden');
+}
+function closeBodyweightPrompt() {
+    document.getElementById('bodyweight-prompt-modal').classList.add('hidden');
+}
+</script>

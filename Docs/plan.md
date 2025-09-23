@@ -1,88 +1,158 @@
-# Comprehensive Cleanup Plan for Tasks.py and Utils.py Files — Status Update
+# Flexin.gg Feature Implementation Plan
 
-## Current Status (Summary of work completed)
-I performed the first two phases of the refactor and created modular files. The large original implementations were replaced with lightweight compatibility shims that re-export the new modules so the codebase remains backward-compatible while the new structure is validated.
+## Overview
+This plan outlines the implementation of currency multipliers, base earning rates, XP system, and level progression for the Flexin.gg fitness app. The plan is divided into phases to ensure smooth progression with testing opportunities.
 
-### New modules created (key items)
-- Core normalization & helpers:
-  - [`Flexingg/core/normalization.py`](Flexingg/core/normalization.py:1)
-  - [`Flexingg/core/formatters.py`](Flexingg/core/formatters.py:1)
-  - [`Flexingg/core/liftosaur_client.py`](Flexingg/core/liftosaur_client.py:1)
-  - [`Flexingg/core/aggregation_service.py`](Flexingg/core/aggregation_service.py:1)
-  - [`Flexingg/core/data_processor.py`](Flexingg/core/data_processor.py:1)
-  - [`Flexingg/core/sync_service.py`](Flexingg/core/sync_service.py:1)
+## Current State Analysis
+- **Models**: UserProfile already has `xp` and `level` fields, Gear model exists with stat bonuses
+- **Views**: Level display already implemented in home.html and profile.html templates
+- **Currency**: gym_gems and cardio_coins fields exist, Transaction model for tracking
+- **Data Processing**: sync_service.py and data_processor.py handle data syncing but lack currency calculation logic
 
-- Service-specific modules:
-  - Garmin:
-    - [`Flexingg/garminconnect/sync_tasks.py`](Flexingg/garminconnect/sync_tasks.py:1)
-    - [`Flexingg/garminconnect/normalization_tasks.py`](Flexingg/garminconnect/normalization_tasks.py:1)
-    - [`Flexingg/garminconnect/data_processor.py`](Flexingg/garminconnect/data_processor.py:1)
-  - Health Connect:
-    - [`Flexingg/healthconnect/sync_tasks.py`](Flexingg/healthconnect/sync_tasks.py:1)
-    - [`Flexingg/healthconnect/normalization_tasks.py`](Flexingg/healthconnect/normalization_tasks.py:1)
-    - [`Flexingg/healthconnect/data_processor.py`](Flexingg/healthconnect/data_processor.py:1)
-  - Liftosaur:
-    - [`Flexingg/liftosaur/data_processor.py`](Flexingg/liftosaur/data_processor.py:1)
-    - [`Flexingg/liftosaur/normalization_tasks.py`](Flexingg/liftosaur/normalization_tasks.py:1)
-    - [`Flexingg/liftosaur/utils.py`](Flexingg/liftosaur/utils.py:1)
+## Phase 1: Foundation - Currency Multipliers & Base Rates
 
-- Compatibility shims (original large files replaced with thin shims that re-export new tasks/helpers):
-  - [`Flexingg/core/tasks.py`](Flexingg/core/tasks.py:1)
-  - [`Flexingg/core/utils.py`](Flexingg/core/utils.py:1)
-  - [`Flexingg/garminconnect/tasks.py`](Flexingg/garminconnect/tasks.py:1)
-  - [`Flexingg/healthconnect/tasks.py`](Flexingg/healthconnect/tasks.py:1)
-  - [`Flexingg/liftosaur/tasks.py`](Flexingg/liftosaur/tasks.py:1)
+### 1.1 Add User Multiplier Fields to UserProfile Model
+**Files to modify**: `Flexingg/core/models.py`
+- Add `cardio_coins_multiplier` (DecimalField, default=1.0)
+- Add `gym_gems_multiplier` (DecimalField, default=1.0)
+- Add `bodyweight_lbs` (DecimalField, default=200.0) for fallback when not synced
 
-## What I changed (high level)
-- Extracted normalization, formatting, aggregation and API client logic into focused modules.
-- Moved Celery sync tasks into service-specific modules and normalization tasks into separate files.
-- Created data_processor modules to encapsulate DB persistence/processing logic.
-- Replaced large original files with compatibility shims that import and re-export the new functions/tasks so existing imports and Celery task names remain valid during migration.
+### 1.2 Create Currency Calculation Service
+**Files to create**: `Flexingg/core/currency_service.py`
+- `calculate_cardio_coins(calories, multiplier)` - returns calories * 1.0 * multiplier
+- `calculate_gym_gems(volume_lbs, bodyweight_lbs, multiplier)` - returns volume_lbs * (1.0/bodyweight_lbs) * multiplier
+- `calculate_xp_from_currencies(cardio_coins, gym_gems)` - returns (cardio_coins * 1) + (gym_gems * 2)
 
-## Next Steps (what remains)
-1. Final verification
-   - Run full test suite and integration sync scenarios (recommended).
-2. Final cleanup
-   - Once tests and manual verification pass, convert compatibility shims into deletions (remove the old large-file shims) or keep them as thin facades if you prefer a long-term compatibility layer.
-   - Remove any now-unused imports and dead code.
-3. Documentation
-   - Update README/Docs with the new module layout and developer notes (how to find a function now).
-4. Git & Deployment
-   - Commit the refactor in logical commits with clear messages and perform CI runs.
+### 1.3 Integrate Currency Calculations into Data Processing
+**Files to modify**: `Flexingg/core/data_processor.py`
+- Import currency_service
+- After processing workouts, calculate and award currencies
+- Handle bodyweight fallback logic (use synced weight or default 200lbs)
+- Award XP based on earned currencies
 
-## Notes / Risk Mitigation
-- No business logic was changed — functions were moved, not rewritten.
-- Compatibility shims preserve existing imports and minimize disruption.
-- Tests and manual verification should be run before permanently removing the original code shims.
+### 1.4 Add Bodyweight Sync Prompt System
+**Files to modify**: `Flexingg/core/views.py`
+- Add view logic to check if user has bodyweight data
+- Create template for manual bodyweight entry prompt
+**Files to create**: `Flexingg/core/templates/bodyweight_prompt.html`
 
-This status update reflects the refactor performed in this session. If you want, I will now:
-- Remove the compatibility shim files (i.e., delete the large-file shims) and finalize cleanup, or
-- Run the test-suite and then remove them after successful verification.
+## Phase 2: XP System Implementation
 
-Indicate which action to take next.
+### 2.1 Update Transaction Model for XP Tracking
+**Files to modify**: `Flexingg/core/models.py`
+- Add `xp_awarded` field to Transaction model (IntegerField, default=0)
+- Update Transaction.CURRENCY_CHOICES to include 'xp'
 
-## Unused / Candidate-for-Removal Files (current scan)
-Below are files I identified as duplicates, compatibility shims replaced with ImportErrors, or files whose logic was fully refactored into new modules. These are safe to remove after you run tests/CI and confirm no remaining imports reference them.
+### 2.2 Enhance Currency Service with XP Calculation
+**Files to modify**: `Flexingg/core/currency_service.py`
+- Update calculation functions to return both currency amounts and XP
+- Add `award_currencies_and_xp(user, cardio_coins, gym_gems, garmin_activity=None)` function
 
-- [`Flexingg/core/tasks_updated.py`](Flexingg/core/tasks_updated.py:1) — duplicate/older copy of the original sync implementation; logic moved to [`Flexingg/core/sync_service.py`](Flexingg/core/sync_service.py:1).
-- [`Flexingg/core/tasks.py`](Flexingg/core/tasks.py:1) — original large tasks file; replaced with an explicit ImportError stub pointing at [`Flexingg/core/sync_service.py`](Flexingg/core/sync_service.py:1).
-- [`Flexingg/core/utils.py`](Flexingg/core/utils.py:1) — compatibility shim removed; helpers moved to:
-  - [`Flexingg/core/formatters.py`](Flexingg/core/formatters.py:1)
-  - [`Flexingg/core/liftosaur_client.py`](Flexingg/core/liftosaur_client.py:1)
-  - [`Flexingg/core/aggregation_service.py`](Flexingg/core/aggregation_service.py:1)
-- [`Flexingg/garminconnect/tasks.py`](Flexingg/garminconnect/tasks.py:1) — replaced by imports in:
-  - [`Flexingg/garminconnect/sync_tasks.py`](Flexingg/garminconnect/sync_tasks.py:1)
-  - [`Flexingg/garminconnect/normalization_tasks.py`](Flexingg/garminconnect/normalization_tasks.py:1)
-- [`Flexingg/healthconnect/tasks.py`](Flexingg/healthconnect/tasks.py:1) — replaced by imports in:
-  - [`Flexingg/healthconnect/sync_tasks.py`](Flexingg/healthconnect/sync_tasks.py:1)
-  - [`Flexingg/healthconnect/normalization_tasks.py`](Flexingg/healthconnect/normalization_tasks.py:1)
-- [`Flexingg/liftosaur/tasks.py`](Flexingg/liftosaur/tasks.py:1) — replaced by:
-  - [`Flexingg/liftosaur/data_processor.py`](Flexingg/liftosaur/data_processor.py:1)
-  - [`Flexingg/liftosaur/normalization_tasks.py`](Flexingg/liftosaur/normalization_tasks.py:1)
+### 2.3 Update Data Processing Integration
+**Files to modify**: `Flexingg/core/data_processor.py`
+- Use enhanced currency service functions
+- Ensure XP is calculated and stored with transactions
+- Update user.xp field when currencies are awarded
 
-Notes and recommended process
-1. Run the full test-suite (or CI) to ensure no imports still reference these files (the ImportError stubs will make such references fail loudly).
-2. After tests pass, remove the files listed above (I can delete them for you).
-3. Optionally keep thin facade modules if you want long-term backward compatibility, but I recommend removing them to avoid confusion.
+## Phase 3: Level System Creation
 
-> If you want, I can delete the listed files now and update this plan to reflect their deletion (I suggest running tests first).
+### 3.1 Create Level Model and Management Command
+**Files to create**: `Flexingg/core/models.py`
+- Add Level model with `level_number`, `xp_required`, `created_at` fields
+**Files to create**: `Flexingg/core/management/commands/populate_levels.py`
+- Create command to populate exponential XP requirements
+- Formula: `xp_required = base_xp * (growth_factor ^ (level_number - 1))`
+- Example: Level 1→2: 100 XP, Level 10→11: ~1000 XP, Level 100→101: ~10,000 XP
+
+### 3.2 Add Level Calculation Logic
+**Files to modify**: `Flexingg/core/currency_service.py`
+- Add `calculate_user_level(total_xp)` function
+- Add `get_next_level_xp(current_level)` function
+- Add `get_level_progress_percentage(current_xp, current_level)` function
+
+### 3.3 Update User Profile Updates
+**Files to modify**: `Flexingg/core/data_processor.py`
+- After awarding XP, check if user leveled up
+- Update user.level field when XP threshold is reached
+
+## Phase 4: UI Updates & Display
+
+### 4.1 Update Home Dashboard
+**Files to modify**: `Flexingg/core/templates/home.html`
+- Replace hardcoded level_card values with dynamic data from context
+- Add level progress display
+**Files to modify**: `Flexingg/core/views.py`
+- Update HomeView to pass level, xp, and next_level_xp to context
+
+### 4.2 Update Profile Page
+**Files to modify**: `Flexingg/core/templates/profile.html`
+- Ensure level display uses dynamic data (already partially implemented)
+- Add level progress bar improvements
+**Files to modify**: `Flexingg/core/views.py`
+- Update ProfileView to pass accurate level data
+
+### 4.3 Add Bodyweight Prompt Integration
+**Files to modify**: `Flexingg/core/templates/base.html`
+- Add bodyweight prompt modal for users without bodyweight data
+**Files to modify**: `Flexingg/core/views.py`
+- Add context to show/hide bodyweight prompt
+
+## Phase 5: Testing & Validation
+
+### 5.1 Database Migration Testing
+- Test all new model fields and relationships
+- Verify data integrity during migrations
+- Test level population command
+
+### 5.2 Currency Calculation Testing
+- Test base rates (1 CardioCoin per calorie, 1 GymGem per bodyweight unit)
+- Test multiplier effects from gear
+- Test XP calculation (1 XP per CardioCoin, 2 XP per GymGem)
+
+### 5.3 Level Progression Testing
+- Test XP requirements increase exponentially
+- Test level up functionality
+- Test level display accuracy
+
+### 5.4 Integration Testing
+- Test complete flow from workout sync to currency/XP award to level up
+- Test bodyweight fallback scenarios
+- Test UI updates and displays
+
+## Implementation Notes
+
+### Gear Integration
+- Existing Gear model already has stat bonuses (str_bonus, end_bonus, etc.)
+- These can be used to modify multipliers: `total_multiplier = base_multiplier * (1 + gear_stat_bonus/100)`
+
+### Data Sources
+- **CardioCoins**: Calculated from calories burned in cardio activities
+- **GymGems**: Calculated from weight lifted volume normalized by bodyweight
+- **XP**: Derived from currencies earned (1:1 for CardioCoins, 2:1 for GymGems)
+
+### Error Handling
+- Graceful fallback to default bodyweight (200lbs) when not available
+- Validation for currency calculations to prevent negative values
+- Logging for debugging currency and XP calculations
+
+## Questions & Considerations
+
+1. **Gear Multiplier Application**: Should gear multipliers be additive or multiplicative? (Current plan: multiplicative)
+2. **XP from Other Sources**: Should sleep, water intake, or nutrition also award XP, or only currencies?
+3. **Level Cap**: Should there be a maximum level, or infinite progression?
+4. **Retroactive XP**: Should existing users get XP for past activities, or start fresh?
+5. **Testing Environment**: What testing framework/environment should be used for validation?
+
+## Risk Mitigation
+
+- **Database Rollback Plan**: All changes include migration files that can be reversed
+- **Feature Flags**: Consider implementing feature flags for gradual rollout
+- **Performance**: Currency calculations happen during sync - monitor for performance impact
+- **Data Integrity**: Add validation to prevent invalid currency/XP values
+
+## Success Metrics
+
+- Currency earning feels fair and rewarding
+- Level progression provides meaningful goals
+- UI clearly displays progress and achievements
+- System handles edge cases (missing bodyweight, no gear, etc.) gracefully

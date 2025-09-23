@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 from decimal import Decimal
 
 from .models import Workout, Sleep, DailySteps, DailyWater, NutritionEntry
+from .currency_service import calculate_cardio_coins, calculate_gym_gems, calculate_xp_from_currencies
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,9 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
     Process fetched data and save to unified models following priorities.
     Returns a summary dict.
     """
+    created_workouts = []
+    updated_workouts = []
+
     for data_type in ['workout', 'sleep', 'steps', 'water']:
         if data_type not in priorities_by_type:
             logger.warning(f"No priorities set for {data_type} for user {user.username}; skipping.")
@@ -38,8 +42,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.end_time = norm['end_time']
                                     existing.data = norm['data']
                                     existing.save()
+                                    updated_workouts.append(existing)
                             else:
-                                Workout.objects.create(user=user, source='garmin', **norm)
+                                w = Workout.objects.create(user=user, source='garmin', **norm)
+                                created_workouts.append(w)
                 elif source == 'liftosaur' and liftosaur_data:
                     from .normalization import normalize_liftosaur_workout
                     for workout in liftosaur_data.get('storage', {}).get('history', []):
@@ -57,8 +63,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.end_time = norm['end_time']
                                     existing.data = norm['data']
                                     existing.save()
+                                    updated_workouts.append(existing)
                             else:
-                                Workout.objects.create(user=user, source='liftosaur', **norm)
+                                w = Workout.objects.create(user=user, source='liftosaur', **norm)
+                                created_workouts.append(w)
                             filled_dates.add(norm['start_time'].date())
                 elif source == 'healthconnect' and 'exerciseSession' in hc_data:
                     from .normalization import normalize_hc_workout
@@ -77,8 +85,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.end_time = norm['end_time']
                                     existing.data = norm['data']
                                     existing.save()
+                                    updated_workouts.append(existing)
                             else:
-                                Workout.objects.create(user=user, source='healthconnect', **norm)
+                                w = Workout.objects.create(user=user, source='healthconnect', **norm)
+                                created_workouts.append(w)
                             filled_dates.add(norm['start_time'].date())
             elif data_type == 'sleep':
                 if source == 'healthconnect' and 'sleepSession' in hc_data:
@@ -312,4 +322,56 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
         'nutrition_processed': nutrition_count
     }
     logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records, {total_water} water records, {total_nutrition} nutrition entries in the last 30 days")
+    # --- Phase 1.3 & Phase 3.3: Award currencies & XP for processed workouts and update levels ---
+    try:
+        from .currency_service import (
+            calculate_cardio_coins,
+            calculate_gym_gems,
+            award_currencies_and_xp,
+            calculate_user_level,
+            get_next_level_xp
+        )
+
+        # Use the user's synced weight if present, otherwise fallback to bodyweight_lbs
+        user_bodyweight = getattr(user, 'weight') or getattr(user, 'bodyweight_lbs', 200)
+        # Multipliers from profile (defaults already in model)
+        cardio_multiplier = getattr(user, 'cardio_coins_multiplier', 1)
+        gym_multiplier = getattr(user, 'gym_gems_multiplier', 1)
+
+        processed_workouts = created_workouts + updated_workouts
+        for w in processed_workouts:
+            try:
+                calories = 0
+                if w.data and isinstance(w.data, dict):
+                    calories = w.data.get('calories', 0) or 0
+                # total lifting volume in lbs
+                try:
+                    volume_lbs = w.get_total_volume(unit='lb')
+                except Exception:
+                    volume_lbs = 0
+
+                cardio_coins_amount = calculate_cardio_coins(calories, cardio_multiplier)
+                gym_gems_amount = calculate_gym_gems(volume_lbs, user_bodyweight, gym_multiplier)
+
+                # Centralized awarding — creates Transaction records and updates user balances & XP
+                try:
+                    award_result = award_currencies_and_xp(user, cardio_coins_amount, gym_gems_amount, garmin_activity=None)
+                except Exception:
+                    logger.exception(f"award_currencies_and_xp failed for user {user.username} workout {w.id}")
+                    award_result = None
+
+                # After awarding XP, check for level up and persist change
+                try:
+                    total_xp = user.xp or 0
+                    new_level = calculate_user_level(total_xp)
+                    if new_level and new_level != (user.level or 1):
+                        logger.info(f"User {user.username} leveled up from {user.level} to {new_level}")
+                        user.level = new_level
+                        user.save()
+                except Exception:
+                    logger.exception(f"Error calculating/updating level for user {user.username}")
+            except Exception as e:
+                logger.exception(f"Error while processing currency awards for workout {w.id}: {e}")
+    except Exception:
+        logger.exception("Error in awarding currencies/XP during sync")
     return summary

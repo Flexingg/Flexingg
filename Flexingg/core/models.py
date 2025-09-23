@@ -10,6 +10,25 @@ class UserProfile(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     gym_gems = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Currency used in store
     cardio_coins = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Currency used for skill upgrades and premium content
+    # Currency multipliers and fallback bodyweight (Phase 1.1)
+    cardio_coins_multiplier = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=1.00,
+        help_text="Personal multiplier for CardioCoins earnings"
+    )
+    gym_gems_multiplier = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=1.00,
+        help_text="Personal multiplier for GymGems earnings"
+    )
+    bodyweight_lbs = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=200.00,
+        help_text="Fallback bodyweight in lbs when synced weight is unavailable"
+    )
     str_stat = models.IntegerField(default=0)
     end_stat = models.IntegerField(default=0)
     fcs_stat = models.IntegerField(default=0)
@@ -133,7 +152,7 @@ class ColorPreferences(models.Model):
         
     def get_error_color(self): 
         return self.error
-               
+                
     def __str__(self):  
         return f"Color Preferences for {self.user.username}"
 
@@ -200,12 +219,15 @@ class Transaction(models.Model):
     CURRENCY_CHOICES = [
         ('cardio_coins', 'Cardio Coins'),
         ('gym_gems', 'Gym Gems'),
+        ('xp', 'Experience Points'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey('UserProfile', on_delete=models.CASCADE, related_name='transactions')
     currency_type = models.CharField(max_length=20, choices=CURRENCY_CHOICES)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # XP awarded associated with this transaction (if any). Stored as integer XP points.
+    xp_awarded = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     garmin_activity = models.ForeignKey(
         'garminconnect.GarminActivity',
@@ -355,49 +377,6 @@ class Workout(models.Model):
     def __str__(self):
         return f"Workout for {self.user.username} from {self.source} on {self.start_time.date()}"
 
-    def get_total_volume(self, unit='lb'):
-        """
-        Calculate total volume from workout data: sum(weight × reps) for all completed sets.
-        Returns volume in specified unit (lb or kg).
-        """
-        if not self.data:
-            return 0
-
-        total_volume = 0
-        entries = self.data.get('entries', [])
-
-        for entry in entries:
-            # Process regular sets
-            sets = entry.get('sets', [])
-            for set_data in sets:
-                if set_data.get('isCompleted', False):
-                    weight = set_data.get('completedWeight', {}).get('value', 0)
-                    reps = set_data.get('completedReps', 0)
-                    if weight and reps:
-                        total_volume += weight * reps
-
-            # Process warmup sets
-            warmup_sets = entry.get('warmupSets', [])
-            for warmup_set in warmup_sets:
-                if warmup_set.get('isCompleted', False):
-                    weight = warmup_set.get('completedWeight', {}).get('value', 0)
-                    reps = warmup_set.get('completedReps', 0)
-                    if weight and reps:
-                        total_volume += weight * reps
-
-        # Convert to requested unit if needed
-        if unit == 'kg':
-            total_volume /= 2.20462
-
-        return total_volume
-
-    def get_total_volume_k(self):
-        """
-        Get total volume in thousands of pounds (for display purposes).
-        Returns volume divided by 1000.
-        """
-        return self.get_total_volume(unit='lb') / 1000
-
 
 class UnifiedWorkoutExercise(models.Model):
     """
@@ -413,22 +392,6 @@ class UnifiedWorkoutExercise(models.Model):
 
     def __str__(self):
         return f"{self.exercise_name}"
-
-    def get_volume(self, unit='lb'):
-        """
-        Calculate total volume for this exercise: sum(completed_weight * completed_reps)
-        Converts all to specified unit if needed (assumes kg to lb conversion).
-        """
-        total = 0
-        for set_instance in self.sets.all():
-            if set_instance.completed_weight_value and set_instance.completed_reps > 0:
-                weight = set_instance.completed_weight_value
-                if set_instance.completed_weight_unit == 'kg':
-                    weight *= 2.20462  # Convert to lb
-                total += weight * set_instance.completed_reps
-        if unit == 'kg':
-            total /= 2.20462
-        return total
 
 
 class UnifiedWorkoutSet(models.Model):
@@ -458,22 +421,6 @@ class UnifiedWorkoutSet(models.Model):
 
     def __str__(self):
         return f"Set {self.set_order} for {self.workout_exercise.exercise_name}: {self.completed_reps} reps @ {self.completed_weight_value}{self.completed_weight_unit or self.weight_unit}"
-
-    def get_set_volume(self, unit='lb'):
-        """
-        Volume for this single set: completed_weight * completed_reps
-        """
-        if not self.completed_weight_value or self.completed_reps <= 0:
-            return 0
-        weight = self.completed_weight_value
-        if self.completed_weight_unit == 'kg':
-            weight *= 2.20462  # to lb
-        elif self.weight_unit == 'kg' and not self.completed_weight_unit:
-            weight *= 2.20462
-        total = weight * self.completed_reps
-        if unit == 'kg':
-            total /= 2.20462
-        return total
 
 
 class Sleep(models.Model):
@@ -513,6 +460,7 @@ class DailySteps(models.Model):
 
     def __str__(self):
         return f"Steps for {self.user.username} from {self.source} on {self.date}: {self.steps}"
+
 
 class DailyWater(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -631,3 +579,22 @@ class WorkoutConflict(models.Model):
 
     def __str__(self):
         return f"Conflict: {self.primary_workout.source} vs {self.archived_workout.source} for {self.user.username}"
+
+
+# Level model for XP progression (Phase 3.1)
+class Level(models.Model):
+    """
+    Represents a level and the cumulative XP required to reach it.
+    level_number is unique and xp_required is the cumulative XP threshold.
+    """
+    level_number = models.IntegerField(unique=True)
+    xp_required = models.BigIntegerField(help_text="Cumulative XP required to reach this level")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['level_number']
+        verbose_name = "Level"
+        verbose_name_plural = "Levels"
+
+    def __str__(self):
+        return f"Level {self.level_number} ({self.xp_required} XP)"

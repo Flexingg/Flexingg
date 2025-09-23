@@ -37,6 +37,82 @@ import os
 from django.db import transaction
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+from .currency_service import get_next_level_xp, get_level_progress_percentage
+
+def _workout_volume_lbs(workout):
+    """
+    Robustly compute total workout volume in pounds.
+    Tries multiple available helpers to remain compatible with different workout representations.
+    Returns a float number of lbs (0 on failure).
+    """
+    try:
+        # Prefer explicit get_total_volume if available
+        if hasattr(workout, 'get_total_volume'):
+            try:
+                return float(workout.get_total_volume(unit='lb') or 0)
+            except Exception:
+                pass
+        # Older helper that returns thousands (k) of lbs: get_total_volume_k()
+        if hasattr(workout, 'get_total_volume_k'):
+            try:
+                return float(workout.get_total_volume_k() or 0) * 1000.0
+            except Exception:
+                pass
+        # Fallback: sum unified_exercises volumes if present
+        ex_qs = getattr(workout, 'unified_exercises', None)
+        if ex_qs is not None:
+            try:
+                total = 0.0
+                for ex in ex_qs.all():
+                    if hasattr(ex, 'get_volume'):
+                        total += float(ex.get_volume('lb') or 0)
+                return total
+            except Exception:
+                pass
+        # Final fallback: attempt to parse raw workout.data structure (entries -> sets/warmupSets)
+        try:
+            data = getattr(workout, 'data', None)
+            if data and isinstance(data, dict):
+                entries = data.get('entries', [])
+                total = 0.0
+                for entry in entries:
+                    # regular sets
+                    for set_data in entry.get('sets', []):
+                        if set_data.get('isCompleted', False):
+                            weight = set_data.get('completedWeight', {}).get('value') or set_data.get('completedWeight', {}).get('value', 0)
+                            reps = set_data.get('completedReps', 0) or 0
+                            unit = set_data.get('completedWeight', {}).get('unit') or entry.get('weightUnit') or 'lb'
+                            if weight and reps:
+                                try:
+                                    w = float(weight)
+                                except Exception:
+                                    w = 0.0
+                                if unit == 'kg':
+                                    w *= 2.20462
+                                total += w * float(reps)
+                    # warmup sets
+                    for warmup in entry.get('warmupSets', []):
+                        if warmup.get('isCompleted', False):
+                            weight = warmup.get('completedWeight', {}).get('value') or 0
+                            reps = warmup.get('completedReps', 0) or 0
+                            unit = warmup.get('completedWeight', {}).get('unit') or 'lb'
+                            if weight and reps:
+                                try:
+                                    w = float(weight)
+                                except Exception:
+                                    w = 0.0
+                                if unit == 'kg':
+                                    w *= 2.20462
+                                total += w * float(reps)
+                if total > 0:
+                    return total
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return 0.0
+
+
 
 class HomeView(TemplateView):
     template_name = 'home.html'
@@ -49,6 +125,14 @@ class HomeView(TemplateView):
             context['total_gems'] = profile.gym_gems
             context['total_coins'] = profile.cardio_coins
             context['level'] = profile.level
+            # XP and dynamic level progress data
+            context['xp'] = getattr(profile, 'xp', 0) or 0
+            # Try to fetch the next_level_xp using Level table; fallback to simple multiplier if not present
+            next_xp = get_next_level_xp(profile.level)
+            if next_xp is None:
+                next_xp = (profile.level or 1) * 10000
+            context['next_level_xp'] = next_xp
+            context['level_progress_percentage'] = get_level_progress_percentage(context['xp'], profile.level)
             recent_activities = []
 
             # Data sources sync debounce logic
@@ -79,6 +163,8 @@ class HomeView(TemplateView):
                 context['sync_triggered'] = True
                 context['sync_user_id'] = profile.id
                 logger.info(f"Triggered general sync for profile {profile.id}")
+                # Show bodyweight prompt when user has no synced weight (manual entry helpful)
+                context['show_bodyweight_prompt'] = True if (getattr(profile, 'weight') in [None, ''] ) else False
         
             # Calculate today's total calories from the current user's unified workouts
             today = timezone.localtime().date()
@@ -102,13 +188,15 @@ class HomeView(TemplateView):
             ).aggregate(total=Sum('amount_ounces'))['total'] or 0
             context['todays_water_ounces'] = todays_water_ounces
 
-            # Calculate today's lifting volume using the Workout model's method
-            total_volume = 0
+            # Calculate today's lifting volume using a robust helper
+            total_volume = 0.0
             workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
             for workout in workouts:
-                
-                print(f"Workout {workout.id} volume: {workout.get_total_volume_k()}k")
-
+                vol_lbs = _workout_volume_lbs(workout)
+                # volume_k is thousands of lbs
+                vol_k = vol_lbs / 1000.0
+                print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
+                total_volume += vol_k
             context['todays_lifting_volume_k'] = total_volume
 
 
@@ -242,13 +330,14 @@ class StatsAPIView(LoginRequiredMixin, View):
         ).aggregate(total=Sum('steps'))['total'] or 0
 
         # Lifting volume
-        total_volume = 0
-        print("Calculating lifting volume for date:", target_date)
+        # Calculate lifting volume robustly (sum of lbs -> convert to k)
+        total_volume = 0.0
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            print(workout.id, workout.get_total_volume_k())
-            total_volume += workout.get_total_volume_k()
-            print(total_volume)
+            vol_lbs = _workout_volume_lbs(workout)
+            vol_k = vol_lbs / 1000.0
+            print(workout.id, vol_k)
+            total_volume += vol_k
         volume_k = total_volume
 
         # Water intake
@@ -256,28 +345,24 @@ class StatsAPIView(LoginRequiredMixin, View):
             user=profile,
             date=target_date
         ).aggregate(total=Sum('amount_ounces'))['total'] or 0
+
         # Lifting volume
         total_volume = 0
         print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            print(workout.id, workout.get_total_volume_k())
+            print(workout.id, _workout_volume_lbs(workout) / 1000.0)
         # Lifting volume
         total_volume = 0
         print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            print(workout.id, workout.get_total_volume_k())
+            print(workout.id, _workout_volume_lbs(workout) / 1000.0)
             
             
         
         
        
-            
-            
-            
-        
-            
 
 
         # Consumed calories
@@ -375,6 +460,37 @@ def sync_data_view(request):
     # Redirect or show an error if accessed via GET
     messages.error(request, "This action can only be performed by clicking the button.")
     return redirect('fitness:settings')
+
+
+@login_required
+def bodyweight_submit(request):
+    """
+    Handle manual bodyweight submissions from the bodyweight_prompt template.
+    Saves both the per-profile fallback (bodyweight_lbs) and the synced weight field.
+    """
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('fitness:home')
+
+    bw_value = request.POST.get('bodyweight_lbs')
+    try:
+        bw = float(bw_value)
+        if bw <= 0:
+            raise ValueError("Bodyweight must be positive")
+    except Exception:
+        messages.error(request, "Please enter a valid bodyweight value.")
+        return redirect('fitness:home')
+
+    # Save to both the user.weight (synced weight) and the fallback bodyweight_lbs
+    user = request.user
+    try:
+        user.weight = bw
+        user.bodyweight_lbs = bw
+        user.save()
+        messages.success(request, "Bodyweight saved.")
+    except Exception:
+        messages.error(request, "Failed to save bodyweight - try again.")
+    return redirect('fitness:home')
 
 
 class DataPriorityView(LoginRequiredMixin, View):
@@ -560,12 +676,39 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         total_calories += garmin_calories
         context['total_calories'] = int(total_calories)
 
-        # Total weight lifted
-        total_weight_lifted = 0
+        # Total weight lifted (lbs) computed robustly
+        total_weight_lifted = 0.0
         workouts = Workout.objects.filter(user=user)
         for workout in workouts:
-            total_weight_lifted += workout.get_total_volume_k() * 1000  # Convert from k lbs to lbs
+            total_weight_lifted += _workout_volume_lbs(workout)
         context['total_weight_lifted'] = int(total_weight_lifted)
+
+        # Developer debug: if we computed zero total but workouts exist, log per-workout diagnostics
+        try:
+            if total_weight_lifted == 0 and workouts.exists():
+                logger.info(f"[DEBUG] User {user.username} total_weight_lifted==0; dumping per-workout diagnostics (up to 3)")
+                for w in workouts[:3]:
+                    try:
+                        vol_get_total = None
+                        if hasattr(w, 'get_total_volume'):
+                            try:
+                                vol_get_total = float(w.get_total_volume(unit='lb') or 0)
+                            except Exception:
+                                vol_get_total = None
+                        vol_unified = 0.0
+                        try:
+                            for ex in getattr(w, 'unified_exercises', []).all():
+                                if hasattr(ex, 'get_volume'):
+                                    vol_unified += float(ex.get_volume('lb') or 0)
+                        except Exception:
+                            vol_unified = None
+                        vol_fallback = _workout_volume_lbs(w)
+                        # Log a compact summary (avoid dumping huge JSON)
+                        logger.info(f"[DEBUG] Workout {w.id} | source={w.source} | get_total_volume={vol_get_total} | unified_sum={vol_unified} | fallback={vol_fallback} | data_keys={list(w.data.keys()) if isinstance(w.data, dict) else type(w.data)}")
+                    except Exception as e:
+                        logger.exception(f"[DEBUG] Error computing diagnostics for workout {w.id}: {e}")
+        except Exception:
+            logger.exception("Error while logging workout diagnostics")
 
         # Total sleep hours
         from .models import Sleep
@@ -589,9 +732,14 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context['total_protein_grams'] = round(float(total_protein_grams), 1)
 
 
-        # Next level XP (dynamic formula)
-        next_level_xp = 10000 * user.level
-        context['next_level_xp'] = next_level_xp
+        # Next level XP and progress (use Level model helpers if available)
+        from .currency_service import get_next_level_xp, get_level_progress_percentage
+        next_xp = get_next_level_xp(user.level)
+        if next_xp is None:
+            next_xp = user.level * 10000
+        context['next_level_xp'] = next_xp
+        context['level_progress_percentage'] = get_level_progress_percentage(user.xp or 0, user.level or 1)
+
 
         # Recent activities (combine cardio and lifts, last 5)
         from .models import Transaction
@@ -637,7 +785,8 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         # Lifting workouts
         lift_workouts = Workout.objects.filter(user=user).order_by('-start_time')[:3]
         for workout in lift_workouts:
-            total_volume = sum(ex.get_volume('lb') for ex in workout.unified_exercises.all())
+            # Use robust helper to compute workout total volume in lbs
+            total_volume = _workout_volume_lbs(workout)
             # For XP, sum gym_gems transactions around workout start_time (approximate, last 24h)
             workout_date = workout.start_time.date()
             xp_sum = Transaction.objects.filter(
@@ -673,7 +822,7 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                     'successes': ex.successes,
                     'failures': ex.failures,
                     'sets': sets_details,
-                    'volume': ex.get_volume('lb'),
+                    'volume': ex.get_volume('lb') if hasattr(ex, 'get_volume') else 0,
                 })
             details = {
                 'source': workout.source,
