@@ -48,7 +48,8 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                 created_workouts.append(w)
                 elif source == 'liftosaur' and liftosaur_data:
                     from .normalization import normalize_liftosaur_workout
-                    for workout in liftosaur_data.get('storage', {}).get('history', []):
+                    # Fix: Liftosaur API returns workouts at top level, not under storage.history
+                    for workout in liftosaur_data.get('workouts', []):
                         norm = normalize_liftosaur_workout(workout)
                         if norm['start_time'].date() not in filled_dates:
                             existing = Workout.objects.filter(user=user, source='liftosaur', source_id=norm['source_id']).first()

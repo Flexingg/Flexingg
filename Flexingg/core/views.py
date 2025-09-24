@@ -135,30 +135,31 @@ class HomeView(TemplateView):
             context['level_progress_percentage'] = get_level_progress_percentage(context['xp'], profile.level)
             recent_activities = []
 
-            # Data sources sync debounce logic
-            debounce_minutes = getattr(profile, 'sync_debounce_minutes', 30)
+            # Data sources sync debounce logic - use unified last_sync field
+            debounce_minutes = getattr(profile, 'sync_debounce_minutes', 60)
             threshold = timezone.now() - timedelta(minutes=debounce_minutes)
             needs_sync = False
 
-            # Check Garmin
-            garmin_auth = None
+            # Check if we need to sync based on unified last_sync field
+            if profile.last_sync is None or profile.last_sync < threshold:
+                needs_sync = True
+
+            # Also check if any services are connected (to determine if sync should be attempted)
+            has_connected_services = (
+                (profile.hc_username) or  # Health Connect
+                (profile.liftosaur_user_id) or  # Liftosaur
+                False  # Add check for Garmin if needed
+            )
+
+            # Try to get Garmin auth for context
             try:
                 garmin_auth = Garmin_Auth.objects.get(user=profile)
                 context['garmin_auth'] = garmin_auth
-                if garmin_auth.last_sync is None or garmin_auth.last_sync < threshold:
-                    needs_sync = True
+                has_connected_services = True
             except Garmin_Auth.DoesNotExist:
                 pass
 
-            # Check Health Connect
-            if profile.hc_username and (profile.hc_last_sync is None or profile.hc_last_sync < threshold):
-                needs_sync = True
-
-            # Check Liftosaur
-            if profile.liftosaur_user_id:
-                needs_sync = True  # Assume needs sync since no last_sync field
-
-            if needs_sync:
+            if needs_sync and has_connected_services:
                 sync_user_data.delay(profile.id)
                 context['sync_triggered'] = True
                 context['sync_user_id'] = profile.id
@@ -359,10 +360,17 @@ class StatsAPIView(LoginRequiredMixin, View):
         for workout in workouts:
             print(workout.id, _workout_volume_lbs(workout) / 1000.0)
             
-            
+        
+        
         
         
        
+
+
+
+
+
+
 
 
         # Consumed calories
@@ -454,7 +462,8 @@ class SignOutView(View):
 @login_required
 def sync_data_view(request):
     if request.method == 'POST':
-        sync_user_data.delay(request.user.id)
+        # For manual sync triggered by the settings page, bypass automatic debounce so the user-forced sync runs immediately.
+        sync_user_data.delay(request.user.id, True)
         messages.success(request, "Sync started! Your data will appear on your dashboard shortly.")
         return redirect('fitness:settings')
     # Redirect or show an error if accessed via GET

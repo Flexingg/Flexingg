@@ -35,13 +35,26 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task
-def sync_user_data(user_id):
+def sync_user_data(user_id, bypass_debounce=False):
     logger.info(f"Sync started for user {user_id}")
     try:
         user = UserProfile.objects.get(id=user_id)
     except UserProfile.DoesNotExist:
         logger.error(f"User with id {user_id} not found.")
         return
+
+    # Check if sync is needed based on debounce setting (skip if bypass_debounce is True)
+    if not bypass_debounce:
+        debounce_minutes = getattr(user, 'sync_debounce_minutes', 60)
+        if user.last_sync and debounce_minutes > 0:
+            time_since_last_sync = timezone.now() - user.last_sync
+            if time_since_last_sync.total_seconds() < (debounce_minutes * 60):
+                logger.info(f"Sync skipped for user {user_id} - last sync was {time_since_last_sync.total_seconds() / 60:.1f} minutes ago (debounce: {debounce_minutes} minutes)")
+                return f"Sync skipped for user {user_id} - too soon since last sync"
+
+    # Update last_sync timestamp
+    user.last_sync = timezone.now()
+    user.save(update_fields=['last_sync'])
 
     # 1. Get user priorities (create defaults if none exist)
     priorities = DataPriority.objects.filter(user=user).order_by('data_type', 'rank')
@@ -145,7 +158,6 @@ def sync_user_data(user_id):
                 start_date = end_date - timedelta(days=30)
                 # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
                 garmin_steps = []
-
                 
                 # Fetch hydration data day by day
                 garmin_hydration = []
@@ -203,7 +215,64 @@ def sync_user_data(user_id):
                 if iteration_count >= max_iterations:
                     logger.error(f"Hydration sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
 
-                logger.info(f"Successfully fetched Garmin data. Hydration records: {len(garmin_hydration)}")
+                # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
+                current_date = start_date
+                max_iterations = 50  # Prevent infinite loops
+                iteration_count = 0
+
+                while current_date <= end_date and iteration_count < max_iterations:
+                    try:
+                        if current_date > timezone.localtime().date():
+                            current_date += timedelta(days=1)
+                            iteration_count += 1
+                            continue
+
+                        url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                        daily_steps_data = None
+                        retry_count = 0
+                        max_retries = 1
+
+                        while retry_count <= max_retries and daily_steps_data is None:
+                            try:
+                                daily_steps_data = garth.client.connectapi(url)
+                                logger.info(f"Successfully fetched steps data for {current_date}")
+                            except GarthHTTPError as api_err:
+                                if api_err.status_code in [401, 403]:
+                                    if retry_count == 0:
+                                        logger.warning(f"Auth error on steps API for {current_date}, attempting refresh and retry.")
+                                        if refresh_oauth2_only(auth_data) and configure_garmin_client(auth_data):
+                                            retry_count += 1
+                                            continue
+                                        else:
+                                            logger.error(f"Token refresh failed during steps sync for {current_date}")
+                                            break
+                                    else:
+                                        logger.error(f"Retry failed after refresh for steps API {current_date}")
+                                        break
+                                elif api_err.status_code == 404:
+                                    logger.debug(f"Steps API not available for {current_date}")
+                                    break
+                                else:
+                                    raise
+                            except Exception as api_err:
+                                logger.warning(f"Steps API failed for {current_date}: {api_err}")
+                                break
+
+                            retry_count += 1 if daily_steps_data is None else 0
+
+                        if daily_steps_data and len(daily_steps_data) > 0:
+                            garmin_steps.extend(daily_steps_data)
+                    except Exception as steps_err:
+                        logger.error(f"Error syncing steps for {current_date} for user {user.id}: {steps_err}")
+
+                    # Always increment the date, regardless of errors
+                    current_date += timedelta(days=1)
+                    iteration_count += 1
+
+                if iteration_count >= max_iterations:
+                    logger.error(f"Steps sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
+
+                logger.info(f"Successfully fetched Garmin data. Activities: {len(garmin_activities)}, Steps records: {len(garmin_steps)}, Hydration records: {len(garmin_hydration)}")
                 logger.info("Successfully fetched Garmin data")
             else:
                 logger.error("Failed to configure Garmin client")
@@ -349,7 +418,7 @@ def sync_user_data(user_id):
                         existing.calories != calories or
                         existing.protein_grams != protein_grams or
                         existing.fat_grams != fat_grams or
-                        existing.carbs_grams != carbs_grams or
+                        existing.carbs_grams != carb_grams or
                         existing.data != data_dict
                     )
                     if needs_update:
@@ -360,7 +429,7 @@ def sync_user_data(user_id):
                         existing.calories = calories
                         existing.protein_grams = protein_grams
                         existing.fat_grams = fat_grams
-                        existing.carbs_grams = carbs_grams
+                        existing.carbs_grams = carb_grams
                         existing.data = data_dict
                         existing.save()
                 else:
@@ -375,7 +444,7 @@ def sync_user_data(user_id):
                         calories=calories,
                         protein_grams=protein_grams,
                         fat_grams=fat_grams,
-                        carbs_grams=carbs_grams,
+                        carbs_grams=carb_grams,
                         data=data_dict
                     )
                 nutrition_count += 1
