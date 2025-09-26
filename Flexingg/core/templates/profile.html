@@ -353,4 +353,136 @@
     });
 </script>
 
+<!-- Stat Card Configuration UI (SortableJS) -->
+<section id="stat-config-section" class="p-4 md:p-6 mt-8 pixel-border bg-[#2a2a2a]">
+    <h3 class="font-pixel text-lg text-[#00f5d4] mb-3">Customize Stat Cards</h3>
+    <p class="text-sm text-gray-400 mb-2">Drag to reorder, toggle to show/hide. Click "Save" to persist.</p>
+    <div id="stat-config-list" class="space-y-2"></div>
+    <div class="mt-3">
+        <button id="save-stat-config" class="pixel-button px-3 py-2 font-pixel text-xs text-gray-300">SAVE CONFIG</button>
+        <span id="stat-config-status" class="ml-3 text-sm text-gray-400"></span>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+(function() {
+    // Metadata must match ALL_STAT_CARDS in stat_card component
+    const AVAILABLE_CARDS = [
+        { key: 'cardio_burned', title: 'CARDIO' },
+        { key: 'lifting_volume', title: 'LIFTING' },
+        { key: 'steps', title: 'STEPS' },
+        { key: 'calories_consumed', title: 'CALORIES' },
+        { key: 'water_intake', title: 'WATER' },
+        { key: 'bodyweight', title: 'BODYWEIGHT' },
+    ];
+
+    const listEl = document.getElementById('stat-config-list');
+    const saveBtn = document.getElementById('save-stat-config');
+    const statusEl = document.getElementById('stat-config-status');
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    async function fetchConfig() {
+        try {
+            const resp = await fetch('{% url "fitness:stat_config_api" %}');
+            if (!resp.ok) throw new Error('fetch failed');
+            const j = await resp.json();
+            return (j && j.config && Array.isArray(j.config)) ? j.config : null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function renderList(config) {
+        listEl.innerHTML = '';
+        // If no config from server, use default AVAILABLE_CARDS order
+        const source = config && config.length ? config : AVAILABLE_CARDS.map((c, i) => ({ key: c.key, visible: true, order: i+1 }));
+        // Ensure we have full metadata for each
+        source.forEach(item => {
+            const meta = AVAILABLE_CARDS.find(c => c.key === item.key) || { title: item.key };
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between bg-[#1b1b1b] border border-[#444] p-2 rounded';
+            row.dataset.statKey = item.key;
+            row.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <span class="drag-handle cursor-grab px-2">☰</span>
+                    <label class="font-pixel text-sm text-white m-0">${meta.title}</label>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="checkbox" class="stat-visible-toggle" ${item.visible ? 'checked' : ''}>
+                </div>
+            `;
+            listEl.appendChild(row);
+        });
+
+        // Initialize Sortable
+        if (window._statSortable) {
+            window._statSortable.destroy();
+        }
+        window._statSortable = Sortable.create(listEl, {
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'opacity-50'
+        });
+    }
+
+    async function init() {
+        const cfg = await fetchConfig();
+        renderList(cfg);
+    }
+
+    saveBtn.addEventListener('click', async () => {
+        const items = Array.from(listEl.children);
+        const payload = { config: [] };
+        items.forEach((el, idx) => {
+            const key = el.dataset.statKey;
+            const visible = el.querySelector('.stat-visible-toggle').checked;
+            payload.config.push({ key, visible, order: idx + 1 });
+        });
+        statusEl.textContent = 'Saving...';
+        try {
+            const resp = await fetch('{% url "fitness:save_stat_config" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(payload)
+            });
+            const j = await resp.json();
+            if (resp.ok && j.status === 'ok') {
+                statusEl.textContent = 'Saved';
+                setTimeout(() => statusEl.textContent = '', 2000);
+                // Trigger a reload of the stat_card area so the UI reflects the new order
+                if (window.location.reload) {
+                    // Reload the page or you can implement a partial reload of components
+                    location.reload();
+                }
+            } else {
+                statusEl.textContent = 'Save failed';
+            }
+        } catch (err) {
+            statusEl.textContent = 'Save error';
+            console.error(err);
+        }
+    });
+
+    init();
+})();
+</script>
+
 {% endblock %}

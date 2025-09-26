@@ -1,10 +1,16 @@
+# -*- coding: utf-8 -*-
 import logging
+import json
+import os
+from datetime import date, timedelta, datetime, timezone as dt_timezone
+
 from django.contrib import messages
-from datetime import timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import ListView, TemplateView, View, DetailView
 from django.utils import timezone
 from django.utils.timezone import get_current_timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
 from core.sync_service import *
@@ -35,13 +41,18 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum, Min
 import os
 from django.db import transaction
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-from .currency_service import get_next_level_xp, get_level_progress_percentage
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
 from django.views.decorators.csrf import csrf_exempt
 import json
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_POST
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+from .currency_service import get_next_level_xp, get_level_progress_percentage
+
 
 def _workout_volume_lbs(workout):
     """
@@ -86,21 +97,18 @@ def _workout_volume_lbs(workout):
                             weight = set_data.get('completedWeight', {}).get('value') or set_data.get('completedWeight', {}).get('value', 0)
                             reps = set_data.get('completedReps', 0) or 0
                             unit = set_data.get('completedWeight', {}).get('unit') or entry.get('weightUnit') or 'lb'
-                            if weight and reps:
-                                try:
-                                    w = float(weight)
-                                except Exception:
-                                    w = 0.0
-                                if unit == 'kg':
-                                    w *= 2.20462
-                                total += w * float(reps)
+                            if weight is None or weight <= 0:
+                                weight = 0.0
+                            elif unit == 'kg':
+                                weight *= 2.20462
+                            total += weight * float(reps)
                     # warmup sets
                     for warmup in entry.get('warmupSets', []):
                         if warmup.get('isCompleted', False):
                             weight = warmup.get('completedWeight', {}).get('value') or 0
                             reps = warmup.get('completedReps', 0) or 0
                             unit = warmup.get('completedWeight', {}).get('unit') or 'lb'
-                            if weight and reps:
+                            if weight >= 0 and reps > 0:
                                 try:
                                     w = float(weight)
                                 except Exception:
@@ -108,13 +116,14 @@ def _workout_volume_lbs(workout):
                                 if unit == 'kg':
                                     w *= 2.20462
                                 total += w * float(reps)
-                if total > 0:
-                    return total
+            if total > 0:
+                return total
         except Exception:
             pass
     except Exception:
         pass
     return 0.0
+
 
 class HomeView(TemplateView):
     template_name = 'home.html'
@@ -137,6 +146,7 @@ class HomeView(TemplateView):
                 next_xp = (profile.level or 1) * 10000
             context['next_level_xp'] = next_xp
             context['level_progress_percentage'] = get_level_progress_percentage(context['xp'], profile.level)
+
             recent_activities = []
 
             # Data sources sync debounce logic - use unified last_sync field
@@ -211,7 +221,6 @@ class HomeView(TemplateView):
             else:
                 todays_consumed_calories = 0
             context['todays_consumed_calories'] = todays_consumed_calories
-            context['todays_water_ounces'] = 0
 
             # Add recent sleep entries
             user = self.request.user
@@ -278,7 +287,7 @@ class HomeView(TemplateView):
                     'protein_grams': nutrition.protein_grams,
                     'fat_grams': nutrition.fat_grams,
                     'carbs_grams': nutrition.carbs_grams,
-                    'data': nutrition.data,
+                    'data': nutrition.data
                 }
                 recent_activities.append({
                     'type': 'nutrition',
@@ -292,13 +301,12 @@ class HomeView(TemplateView):
                     'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
                     'details': details
                 })
-
             # Sort by date descending
             recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
             context['recent_activities'] = recent_activities[:5]
 
             return context
-
+        
 
 class StatsAPIView(LoginRequiredMixin, View):
     def get(self, request):
@@ -341,7 +349,7 @@ class StatsAPIView(LoginRequiredMixin, View):
             print(workout.id, vol_k)
             total_volume += vol_k
 
-        # Water intake
+    # Water intake
         water_ounces = DailyWater.objects.filter(
             user=profile,
             date=target_date
@@ -389,6 +397,348 @@ class StatsAPIView(LoginRequiredMixin, View):
                 response_data['earliest_date'] = today.isoformat()  # No data, use today
 
         return JsonResponse(response_data)
+
+
+# --- Detail API for stat cards (Graph points + optional list) ---
+from django.db.models import Sum
+from .models import NutritionEntry, BodyWeight, DailyWater, DailySteps, Workout
+
+def _daterange(start_date, end_date):
+    days = []
+    current = start_date
+    while current <= end_date:
+        days.append(current)
+        current += timedelta(days=1)
+    return days
+
+class StatDetailAPIView(LoginRequiredMixin, View):
+    """
+    Returns historical data points (default last 30 days) and an optional activity/list payload
+    depending on stat_key. Query params:
+      - start: YYYY-MM-DD (optional, default = today - 29 days)
+      - end:   YYYY-MM-DD (optional, default = today)
+    Response:
+      {
+        stat_key: "...",
+        start: "YYYY-MM-DD",
+        end: "YYYY-MM-DD",
+        points: [{date: "YYYY-MM-DD", value: float}, ...],
+        list: [ { ... } ]  // optional activity/nutrition/workout entries for the requested range (latest first)
+      }
+    """
+    VALID_KEYS = {'cardio_burned', 'lifting_volume', 'steps', 'calories_consumed', 'water_intake', 'bodyweight'}
+
+    def get(self, request, stat_key):
+        if stat_key not in self.VALID_KEYS:
+            return JsonResponse({'error': 'invalid_stat_key'}, status=400)
+        user = request.user
+        today = timezone.localtime().date()
+        start_str = request.GET.get('start')
+        end_str = request.GET.get('end')
+        try:
+            if end_str:
+                end = date.fromisoformat(end_str)
+            else:
+                end = today
+            if start_str:
+                start = date.fromisoformat(start_str)
+            else:
+                start = end - timedelta(days=29)
+        except Exception:
+            return JsonResponse({'error': 'invalid_date_format'}, status=400)
+
+        points = []
+        list_payload = []
+
+        # Build daily points for the date range
+        for d in _daterange(start, end):
+            value = 0.0
+            if stat_key == 'cardio_burned':
+                # Sum calories from unified Workouts (prefer garmin but include all)
+                calories = Workout.objects.filter(user=user, start_time__date=d).aggregate(total=Sum('data__calories'))['total'] or 0
+                try:
+                    value = float(calories)
+                except Exception:
+                    value = 0.0
+            elif stat_key == 'lifting_volume':
+                # Sum robust workout volume for each workout on the date (lbs -> convert to thousands)
+                day_workouts = Workout.objects.filter(user=user, start_time__date=d)
+                total_lbs = 0.0
+                for w in day_workouts:
+                    try:
+                        total_lbs += _workout_volume_lbs(w)
+                    except Exception:
+                        pass
+                value = total_lbs / 1000.0
+            elif stat_key == 'steps':
+                steps = DailySteps.objects.filter(user=user, date=d).aggregate(total=Sum('steps'))['total'] or 0
+                value = int(steps)
+            elif stat_key == 'calories_consumed':
+                consumed = NutritionEntry.objects.filter(user=user, datetime__date=d).aggregate(total=Sum('calories'))['total'] or 0
+                try:
+                    value = float(consumed)
+                except Exception:
+                    value = 0.0
+            elif stat_key == 'water_intake':
+                water = DailyWater.objects.filter(user=user, date=d).aggregate(total=Sum('amount_ounces'))['total'] or 0
+                try:
+                    value = float(water)
+                except Exception:
+                    value = 0.0
+            elif stat_key == 'bodyweight':
+                # Use latest BodyWeight entry value for the date if present, else null
+                bw_entry = BodyWeight.objects.filter(user=user, datetime__date=d).order_by('-datetime').first()
+                if bw_entry and getattr(bw_entry, 'weight_lbs', None) is not None:
+                    try:
+                        value = float(bw_entry.weight_lbs)
+                    except Exception:
+                        value = None
+                else:
+                    value = None
+            points.append({
+                'date': d.isoformat(),
+                'value': None if value is None else (float(value) if isinstance(value, (int, float, Decimal)) else value)
+            })
+
+        # Provide list payload for stat types that require detailed lists
+        if stat_key == 'cardio_burned':
+            # return workouts (prefer garmin activities then workouts with calories)
+            activities = Workout.objects.filter(user=user, start_time__date__gte=start, start_time__date__lte=end).order_by('-start_time')[:50]
+            for w in activities:
+                calories = 0
+                try:
+                    calories = float(w.data.get('calories', 0) or 0)
+                except Exception:
+                    calories = 0
+                list_payload.append({
+                    'type': 'workout',
+                    'id': str(w.id),
+                    'source': w.source,
+                    'start_time': w.start_time.isoformat(),
+                    'end_time': w.end_time.isoformat() if w.end_time else None,
+                    'calories': calories,
+                    'duration_seconds': w.duration_seconds,
+                })
+        elif stat_key == 'lifting_volume':
+            lift_workouts = Workout.objects.filter(user=user, start_time__date__gte=start, start_time__date__lte=end).order_by('-start_time')[:50]
+            for w in lift_workouts:
+                total_volume = _workout_volume_lbs(w)
+                list_payload.append({
+                    'type': 'lift',
+                    'id': str(w.id),
+                    'source': w.source,
+                    'start_time': w.start_time.isoformat(),
+                    'total_volume_lbs': float(total_volume),
+                })
+        elif stat_key == 'calories_consumed':
+            nutritions = NutritionEntry.objects.filter(user=user, datetime__date__gte=start, datetime__date__lte=end).order_by('-datetime')[:50]
+            for n in nutritions:
+                list_payload.append({
+                    'type': 'nutrition',
+                    'id': str(n.id),
+                    'datetime': n.datetime.isoformat(),
+                    'food_name': n.food_name,
+                    'calories': float(n.calories or 0),
+                    'quantity_description': n.quantity_description,
+                })
+        elif stat_key == 'water_intake':
+            waters = DailyWater.objects.filter(user=user, date__gte=start, date__lte=end).order_by('-date')[:50]
+            for w in waters:
+                list_payload.append({
+                    'type': 'water',
+                    'id': str(w.id),
+                    'date': w.date.isoformat(),
+                    'amount_ounces': float(w.amount_ounces),
+                    'source': w.source,
+                })
+        elif stat_key == 'bodyweight':
+            bws = BodyWeight.objects.filter(user=user, datetime__date__gte=start, datetime__date__lte=end).order_by('-datetime')[:50]
+            for b in bws:
+                list_payload.append({
+                    'type': 'bodyweight',
+                    'id': str(b.id),
+                    'datetime': b.datetime.isoformat(),
+                    'weight_lbs': float(b.weight_lbs),
+                    'source': b.source,
+                })
+        # Steps: optional list of DailySteps entries
+        elif stat_key == 'steps':
+            steps_qs = DailySteps.objects.filter(user=user, date__gte=start, date__lte=end).order_by('-date')[:50]
+            for s in steps_qs:
+                list_payload.append({
+                    'type': 'steps',
+                    'id': str(s.id),
+                    'date': s.date.isoformat(),
+                    'steps': int(s.steps),
+                    'source': s.source,
+                })
+
+        response = {
+            'stat_key': stat_key,
+            'start': start.isoformat(),
+            'end': end.isoformat(),
+            'points': points,
+            'list': list_payload
+        }
+        return JsonResponse(response, safe=False)
+    
+@login_required
+def save_stat_config(request):
+    """
+    Accepts JSON POST to save the user's stat card configuration.
+    Expected JSON body: {"config": [{"key":"lifting_volume","visible":true,"order":1}, ...] }
+    Returns: {'status':'ok','config': <saved>} or error.
+    """
+    user = request.user
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except Exception:
+        return JsonResponse({'error': 'invalid_json'}, status=400)
+
+    config = payload.get('config')
+    if not isinstance(config, list):
+        return JsonResponse({'error': 'invalid_config'}, status=400)
+
+    # Basic validation: ensure keys are known and visible/order present
+    valid_keys = {'cardio_burned','lifting_volume','steps','calories_consumed','water_intake','bodyweight'}
+    cleaned = []
+    order_seen = set()
+    for item in config:
+        if not isinstance(item, dict):
+            continue
+        key = item.get('key')
+        if key not in valid_keys:
+            continue
+        visible = bool(item.get('visible', True))
+        order = int(item.get('order', 99))
+        # Normalize order to avoid duplicates: if duplicate, keep given order but it's acceptable
+        cleaned.append({'key': key, 'visible': visible, 'order': order})
+        order_seen.add(order)
+
+    try:
+        user.stat_card_config = cleaned
+        user.save()
+        return JsonResponse({'status': 'ok', 'config': cleaned})
+    except Exception as e:
+        logger.exception("Failed to save stat_card_config for user %s: %s", getattr(user, 'id', 'unknown'), e)
+        return JsonResponse({'error': 'save_failed'}, status=500)
+
+@login_required
+def stat_config_api(request):
+    """
+    GET endpoint to return the current user's stat_card_config.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+    user = request.user
+    config = getattr(user, 'stat_card_config', None) or []
+    return JsonResponse({'status': 'ok', 'config': config})
+
+@csrf_exempt
+def water_submit_api(request):
+    """
+    Simple API endpoint to accept POST JSON for water submission.
+
+    Expected JSON body examples:
+      { "date": "YYYY-MM-DD", "amount_ounces": 24, "source": "pwa", "data": {...} }
+      { "amount_ounces": 12 }  -> uses today's date and source='pwa'
+
+    Behavior:
+      - Requires an authenticated user (returns 401 if not).
+      - Upserts a DailyWater record for (user, source, date).
+      - Returns JSON {status: ok, created: bool, id: <uuid>, amount_ounces: float}
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'method_not_allowed'}, status=405)
+
+    # Parse JSON body defensively
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except Exception:
+        return JsonResponse({'error': 'invalid_json'}, status=400)
+
+    # Authentication check
+    try:
+        if not getattr(request, 'user', None) or not request.user.is_authenticated:
+            return JsonResponse({'error': 'authentication_required'}, status=401)
+    except Exception:
+        return JsonResponse({'error': 'authentication_required'}, status=401)
+
+    # Extract fields with sensible fallbacks
+    date_str = payload.get('date') or payload.get('day')
+    amount = payload.get('amount_ounces') or payload.get('amount') or payload.get('ounces')
+    source = payload.get('source') or 'pwa'
+    extra_data = payload.get('data') or {}
+
+    if amount is None:
+        return JsonResponse({'error': 'missing_amount'}, status=400)
+
+    # Parse amount
+    try:
+        amt = float(amount)
+    except Exception:
+        return JsonResponse({'error': 'invalid_amount'}, status=400)
+
+    # Parse date (ISO 8601 YYYY-MM-DD) or use today
+    try:
+        if date_str:
+            try:
+                submitted_date = date.fromisoformat(date_str)
+            except Exception:
+                return JsonResponse({'error': 'invalid_date_format'}, status=400)
+        else:
+            submitted_date = timezone.localtime().date()
+    except Exception:
+        submitted_date = timezone.localtime().date()
+
+    # Upsert DailyWater record
+    try:
+        defaults = {
+            'amount_ounces': Decimal(str(amt)),
+            'data': extra_data,
+        }
+        obj, created = DailyWater.objects.update_or_create(
+            user=request.user,
+            source=source,
+            date=submitted_date,
+            defaults=defaults
+        )
+        return JsonResponse({
+            'status': 'ok',
+            'created': bool(created),
+            'id': str(obj.id),
+            'amount_ounces': float(obj.amount_ounces),
+            'date': obj.date.isoformat(),
+            'source': obj.source
+        })
+    except Exception as e:
+        logger.exception("Failed to upsert DailyWater: %s", e)
+        return JsonResponse({'error': 'save_failed'}, status=500)
+
+def result_view(func):
+    loop = asyncio.get_event_loop()
+    def signal(*args):
+        async def _signal():
+            result = func(*args)
+            keys_to_remove = {key for key in result if key[-1] == '_'}
+
+            for key in keys_to_remove:
+                logger.debug(f"removing {key} from {result}")
+
+                del result[key]
+
+            logger.info(f"value returned by selected_final_op_ts(): {result}")
+
+            result = loop.run_until_complete(result)
+
+            return result
+        # run this task in the same loop as request handling.
+        # note that this loop is already in a backgroundthread but this is just to be sure
+        result = loop.run_until_complete(_signal())
+
+        return result
+
+    return signal
 
 
 class SignUpView(View):
@@ -884,7 +1234,6 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
                 'details': details
             })
-
         # Sort by date descending
         recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
         context['recent_activities'] = recent_activities[:5]

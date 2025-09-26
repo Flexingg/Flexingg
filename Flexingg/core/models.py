@@ -47,6 +47,12 @@ class UserProfile(AbstractUser):
     sync_debounce_minutes = models.IntegerField(default=60, null=True, blank=True, help_text="Minutes between automatic general syncs (default: 60)")
     last_sync = models.DateTimeField(null=True, blank=True, help_text="Timestamp of the last general sync")
 
+    stat_card_config = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Configuration for stat card order and visibility."
+    )
+
     liftosaur_user_id = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur user ID for integration")
     liftosaur_session_token = models.CharField(max_length=255, blank=True, null=True, help_text="Liftosaur session token for API access")
 

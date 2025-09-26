@@ -5,42 +5,45 @@
         <input type="date" id="date-picker" class="font-pixel pixel-border bg-[#2a2a2a] text-white rounded px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;">
     </div>
     <div id="stats-grid" class="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <!-- Cardio Stats -->
-        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
-            <p class="font-pixel text-sm text-cyan-300">CARDIO</p>
-            <p id="calories-value" class="font-pixel text-2xl text-white mt-2">{{ todays_total_calories|default:0|intcomma }}</p>
-            <p class="text-xs text-gray-400">KCAL BURNED</p>
+        {% for card in stat_cards %}
+        <div class="pixel-border bg-[#2a2a2a] p-3 text-center stat-card-clickable" data-stat-key="{{ card.key }}">
+            <p class="font-pixel text-sm {{ card.color }}">{{ card.title }}</p>
+            <p id="{{ card.id }}" class="font-pixel text-2xl text-white mt-2">
+                {% if card.key == 'lifting_volume' %}
+                    {{ card.value|default:0|floatformat:1 }}k
+                {% elif card.key == 'water_intake' or card.key == 'bodyweight' %}
+                    {{ card.value|default:'N/A' }}
+                {% else %}
+                    {{ card.value|default:0|intcomma }}
+                {% endif %}
+                {% if card.key == 'bodyweight' and card.value != 'N/A' %} lbs{% endif %}
+            </p>
+            <p class="text-xs text-gray-400">{{ card.unit }}</p>
         </div>
+        {% endfor %}
+    </div>
+</div>
 
-        <!-- Weightlifting Stats -->
-        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
-            <p class="font-pixel text-sm text-red-400">LIFTING</p>
-            <p id="volume-value" class="font-pixel text-2xl text-white mt-2">{{ todays_lifting_volume_k }}k</p>
-            <p class="text-xs text-gray-400">Total Volume (lbs)</p>
+<!-- Modal Placeholder -->
+<div id="stat-detail-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+    <div class="pixel-border bg-[#2a2a2a] p-6 w-11/12 max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="modal-title" class="font-pixel text-xl text-white"></h2>
+            <button id="modal-close-btn" class="pixel-button text-white text-lg px-3 py-1">X</button>
         </div>
-
-        <!-- Cardio Steps -->
-        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
-            <p class="font-pixel text-sm text-cyan-300">STEPS</p>
-            <p id="steps-value" class="font-pixel text-2xl text-white mt-2">{{ todays_steps|default:0|intcomma }}</p>
-            <p class="text-xs text-gray-400">STEPS TAKEN</p>
-        </div>
-
-        <!-- Consumed Calories -->
-        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
-            <p class="font-pixel text-sm text-red-400">CALORIES</p>
-            <p id="consumed-value" class="font-pixel text-2xl text-white mt-2">{{ todays_consumed_calories|default:0|intcomma }}</p>
-            <p class="text-xs text-gray-400">KCAL CONSUMED</p>
-        </div>
-
-        <!-- Water Intake -->
-        <div class="pixel-border bg-[#2a2a2a] p-3 text-center">
-            <p class="font-pixel text-sm text-blue-400">WATER</p>
-            <p id="water-value" class="font-pixel text-2xl text-white mt-2">{{ todays_water_ounces|default:0|floatformat:1 }}</p>
-            <p class="text-xs text-gray-400">OZ INTAKE</p>
+        <div id="modal-content">
+            <!-- Content loaded dynamically: Graph, List, or Form -->
+            <div id="modal-graph-container" class="h-64 w-full mb-4">
+                <canvas id="stat-chart"></canvas>
+            </div>
+            <div id="modal-list-container" class="space-y-2"></div>
+            <div id="modal-form-container" class="mt-4"></div>
         </div>
     </div>
 </div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -52,6 +55,35 @@ document.addEventListener('DOMContentLoaded', function() {
     const statsGrid = document.getElementById('stats-grid');
     let earliestDate = today;
     let currentDate = today;
+
+    // Map stat keys to their corresponding metric keys in the API response
+    const STAT_KEY_MAP = {
+        'cardio_burned': 'calories',
+        'lifting_volume': 'volume_k',
+        'steps': 'steps',
+        'calories_consumed': 'consumed',
+        'water_intake': 'water_ounces',
+        'bodyweight': 'bodyweight_lbs'
+    };
+
+    // Chart instance placeholder
+    let statChart = null;
+
+    // Utility: CSRF token getter
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
 
     // Initial load: fetch earliest and today's stats
     async function initStats() {
@@ -71,13 +103,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function formatNumber(value, key) {
+        if (value === null || value === undefined) {
+            return key === 'bodyweight_lbs' ? 'N/A' : '0';
+        }
+        if (key === 'volume_k') {
+            return Number(value).toFixed(1) + 'k lbs';
+        }
+        if (key === 'water_ounces' || key === 'bodyweight_lbs') {
+            const formatted = Number(value).toFixed(1);
+            return key === 'bodyweight_lbs' ? formatted + ' lbs' : formatted;
+        }
+        return Number(value).toLocaleString();
+    }
+
     function updateDisplay(data) {
-        document.getElementById('calories-value').textContent = data.calories.toLocaleString();
-        document.getElementById('steps-value').textContent = data.steps.toLocaleString();
-        document.getElementById('volume-value').textContent = data.volume_k + 'k lbs';
-        document.getElementById('consumed-value').textContent = data.consumed.toLocaleString();
-        document.getElementById('water-value').textContent = data.water_ounces ? data.water_ounces.toFixed(1) : '0.0';
-        logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        // Update dynamic cards based on their IDs
+        document.getElementById('calories-value').textContent = formatNumber(data.calories, 'calories');
+        document.getElementById('steps-value').textContent = formatNumber(data.steps, 'steps');
+        document.getElementById('volume-value').textContent = formatNumber(data.volume_k, 'volume_k');
+        document.getElementById('consumed-value').textContent = formatNumber(data.consumed, 'consumed');
+        document.getElementById('water-value').textContent = formatNumber(data.water_ounces, 'water_ounces');
+        document.getElementById('bodyweight-value').textContent = formatNumber(data.bodyweight_lbs, 'bodyweight_lbs');
+
+        if (logHeader) {
+            logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
         currentDate = data.date;
     }
 
@@ -94,20 +145,190 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateDisplayFromServer() {
         // Use server-side values for initial load if API fails
-        logHeader.textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        if (logHeader) {
+            logHeader.textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
     }
 
     // Date picker change
-    datePicker.addEventListener('change', (e) => {
-        if (e.target.value < earliestDate) {
-            e.target.value = earliestDate;
-        }
-        fetchStats(e.target.value);
-    });
+    if (datePicker) {
+        datePicker.addEventListener('change', (e) => {
+            if (e.target.value < earliestDate) {
+                e.target.value = earliestDate;
+            }
+            fetchStats(e.target.value);
+        });
+    }
 
     // Calendar button click
-    calendarBtn.addEventListener('click', () => {
-        datePicker.showPicker();
+    if (calendarBtn) {
+        calendarBtn.addEventListener('click', () => {
+            datePicker.showPicker();
+        });
+    }
+
+    // Modal Logic: fetch detail endpoint, render chart/list/form
+    const modal = document.getElementById('stat-detail-modal');
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+    const modalTitle = document.getElementById('modal-title');
+    const modalGraphContainer = document.getElementById('modal-graph-container');
+    const modalListContainer = document.getElementById('modal-list-container');
+    const modalFormContainer = document.getElementById('modal-form-container');
+    const statChartCanvas = document.getElementById('stat-chart');
+
+    modalCloseBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+
+    function clearModal() {
+        modalTitle.textContent = '';
+        modalListContainer.innerHTML = '';
+        modalFormContainer.innerHTML = '';
+        if (statChart && statChart.destroy) {
+            statChart.destroy();
+            statChart = null;
+        }
+    }
+
+    async function fetchDetailAndRender(statKey) {
+        try {
+            const detailBase = apiUrl.replace(/\/$/, '') + '/detail/' + statKey + '/';
+            const resp = await fetch(`${detailBase}?end=${currentDate}`);
+            if (!resp.ok) throw new Error('detail api error');
+            const payload = await resp.json();
+
+            // Title
+            modalTitle.textContent = (STAT_KEY_MAP[statKey] ? statKey.replace('_',' ').toUpperCase() : statKey) + ' History';
+
+            // Chart: use payload.points
+            const labels = payload.points.map(p => p.date);
+            const values = payload.points.map(p => (p.value === null ? NaN : Number(p.value)));
+
+            // Create Chart.js line
+            if (statChart) {
+                statChart.destroy();
+                statChart = null;
+            }
+            statChart = new Chart(statChartCanvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: statKey,
+                        data: values,
+                        borderColor: '#00f5d4',
+                        backgroundColor: 'rgba(0,245,212,0.08)',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        spanGaps: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { display: true, ticks: { maxRotation: 0, autoSkip: true } },
+                        y: { display: true, beginAtZero: true }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+
+            // List
+            modalListContainer.innerHTML = '';
+            if (payload.list && Array.isArray(payload.list) && payload.list.length) {
+                payload.list.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'pixel-border bg-[#1a1a1a] p-3';
+                    // Simple representation; front-end can expand per type
+                    if (item.type === 'workout' || item.type === 'lift') {
+                        el.innerHTML = `<div class="flex justify-between"><div class="font-pixel text-sm text-white">${item.source || item.type}</div><div class="font-pixel text-xs text-gray-400">${new Date(item.start_time || item.date || item.datetime).toLocaleString()}</div></div>
+                                        <div class="mt-1 text-gray-300 text-sm">Calories: ${item.calories || item.total_volume_lbs || 'N/A'} ${item.total_volume_lbs ? 'lbs' : ''}</div>`;
+                    } else if (item.type === 'nutrition') {
+                        el.innerHTML = `<div class="font-pixel text-sm text-white">${item.food_name}</div><div class="text-xs text-gray-400">${new Date(item.datetime).toLocaleString()}</div><div class="mt-1 text-gray-300 text-sm">Calories: ${item.calories}</div>`;
+                    } else if (item.type === 'water') {
+                        el.innerHTML = `<div class="font-pixel text-sm text-white">Water - ${item.source}</div><div class="text-xs text-gray-400">${item.date}</div><div class="mt-1 text-gray-300 text-sm">${item.amount_ounces} oz</div>`;
+                    } else if (item.type === 'bodyweight') {
+                        el.innerHTML = `<div class="font-pixel text-sm text-white">Bodyweight</div><div class="text-xs text-gray-400">${item.datetime}</div><div class="mt-1 text-gray-300 text-sm">${item.weight_lbs} lbs</div>`;
+                    } else if (item.type === 'steps') {
+                        el.innerHTML = `<div class="font-pixel text-sm text-white">Steps</div><div class="text-xs text-gray-400">${item.date}</div><div class="mt-1 text-gray-300 text-sm">${item.steps}</div>`;
+                    } else {
+                        el.textContent = JSON.stringify(item);
+                    }
+                    modalListContainer.appendChild(el);
+                });
+            } else {
+                modalListContainer.innerHTML = '<p class="text-gray-400">No entries for this range.</p>';
+            }
+
+            // Form handling for water and bodyweight
+            modalFormContainer.innerHTML = '';
+            if (statKey === 'water_intake') {
+                modalFormContainer.innerHTML = `
+                    <form id="water-entry-form" class="space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <input type="date" name="date" value="${currentDate}" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm">
+                            <input type="number" step="0.1" name="amount_ounces" placeholder="Ounces" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" />
+                            <button type="submit" class="pixel-button px-3 py-1">Save Water</button>
+                        </div>
+                        <div id="water-entry-status" class="text-sm text-gray-300"></div>
+                    </form>
+                `;
+                const wf = document.getElementById('water-entry-form');
+                wf.addEventListener('submit', async (ev) => {
+                    ev.preventDefault();
+                    const formData = new FormData(wf);
+                    const payload = new URLSearchParams();
+                    for (const pair of formData.entries()) payload.append(pair[0], pair[1]);
+                    try {
+                        const resp = await fetch('{% url "fitness:water_submit_api" %}', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                            body: payload
+                        });
+                        const j = await resp.json();
+                        const status = document.getElementById('water-entry-status');
+                        if (resp.ok && j.status === 'ok') {
+                            status.textContent = 'Saved';
+                            setTimeout(() => status.textContent = '', 2000);
+                            // Reload detail to reflect new point
+                            fetchDetailAndRender(statKey);
+                        } else {
+                            status.textContent = j.error || 'Save failed';
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+                });
+            } else if (statKey === 'bodyweight') {
+                modalFormContainer.innerHTML = `
+                    <form id="bw-entry-form" method="post" action="{% url 'fitness:bodyweight_submit' %}" class="space-y-2">
+                        <div class="flex items-center space-x-2">
+                            <input type="number" step="0.1" name="bodyweight_lbs" placeholder="lbs" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" />
+                            <button type="submit" class="pixel-button px-3 py-1">Save Weight</button>
+                        </div>
+                    </form>
+                `;
+                // Let the form submit as a regular POST to existing view (it will redirect). Could be enhanced to AJAX.
+            }
+        } catch (err) {
+            console.error('Detail fetch error', err);
+            modalListContainer.innerHTML = '<p class="text-red-400">Failed to load detail data.</p>';
+        }
+    }
+
+    statsGrid.addEventListener('click', (e) => {
+        let target = e.target.closest('.stat-card-clickable');
+        if (target) {
+            const statKey = target.dataset.statKey;
+            modal.classList.remove('hidden');
+            clearModal();
+            // fetch and render detail
+            fetchDetailAndRender(statKey);
+        }
     });
 
     // Swipe functionality

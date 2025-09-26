@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import *
+from django.http import JsonResponse
 
 app_name = 'fitness'
 
@@ -27,4 +28,8 @@ urlpatterns = [
     path('locker_room/', LockerRoomView.as_view(), name='locker_room'),
     path('shop/', ShopView.as_view(), name='shop'),
     path('api/stats/', StatsAPIView.as_view(), name='stats_api'),
+    path('api/stats/detail/<str:stat_key>/', StatDetailAPIView.as_view(), name='stat_detail_api'),
+    path('api/stats/config/', stat_config_api, name='stat_config_api'),
+    path('api/stats/save-config/', save_stat_config, name='save_stat_config'),
+    path('api/water/submit/', water_submit_api, name='water_submit_api'),
 ]
