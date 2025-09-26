@@ -328,6 +328,13 @@ def sync_user_data(user_id, bypass_debounce=False):
     # 4. Process and save data in priority order
     # Delegate heavy processing to core.data_processor.process_and_save_user_data
     try:
+        # Log priorities and fetched data sizes to aid debugging when workouts are not created
+        try:
+            logger.info(f"Priorities by type for user {user.username}: {priorities_by_type}")
+            logger.info(f"Garmin: activities={len(garmin_activities) if garmin_activities is not None else 0}, steps={len(garmin_steps) if garmin_steps is not None else 0}, hydration={len(garmin_hydration) if garmin_hydration is not None else 0}")
+            logger.info(f"HealthConnect keys: {list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data)}; Liftosaur type: {type(liftosaur_data)}")
+        except Exception:
+            logger.debug("Failed to log pre-processing debug info for sync inputs")
         summary = process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data)
         # If process_and_save_user_data returns a summary dict, log totals similarly to previous behavior
         if isinstance(summary, dict):
@@ -418,7 +425,7 @@ def sync_user_data(user_id, bypass_debounce=False):
                         existing.calories != calories or
                         existing.protein_grams != protein_grams or
                         existing.fat_grams != fat_grams or
-                        existing.carbs_grams != carb_grams or
+                        existing.carbs_grams != carbs_grams or
                         existing.data != data_dict
                     )
                     if needs_update:
@@ -429,7 +436,7 @@ def sync_user_data(user_id, bypass_debounce=False):
                         existing.calories = calories
                         existing.protein_grams = protein_grams
                         existing.fat_grams = fat_grams
-                        existing.carbs_grams = carb_grams
+                        existing.carbs_grams = carbs_grams
                         existing.data = data_dict
                         existing.save()
                 else:
@@ -444,7 +451,7 @@ def sync_user_data(user_id, bypass_debounce=False):
                         calories=calories,
                         protein_grams=protein_grams,
                         fat_grams=fat_grams,
-                        carbs_grams=carb_grams,
+                        carbs_grams=carbs_grams,
                         data=data_dict
                     )
                 nutrition_count += 1

@@ -102,6 +102,15 @@ class StatCard(component.Component):
         if not user_config or not isinstance(user_config, list):
             user_config = DEFAULT_CONFIG
         
+        # helper to safely convert values to float, returning default if None/empty/invalid
+        def safe_float(v, default=0.0):
+            try:
+                if v is None or (isinstance(v, str) and v.strip() == ''):
+                    return default
+                return float(v)
+            except Exception:
+                return default
+
         # 4. Build the final list of cards
         final_cards = []
         for item in user_config:
@@ -115,20 +124,16 @@ class StatCard(component.Component):
                 
                 # Special handling for bodyweight formatting
                 if key == 'bodyweight':
-                    if value is not None and float(value) > 0:
-                        #card_data['value'] = f"{float(value):.1f}"
-                        card_data['value'] = float(value)
+                    if value is not None and safe_float(value, 0.0) > 0:
+                        card_data['value'] = safe_float(value)
                         card_data['suffix'] = ' lbs'
                     else:
                         card_data['value'] = 'N/A'
                         card_data['suffix'] = ''
                 elif key == 'water_intake':
-                    #card_data['value'] = f"{float(value):.1f}"
-                    card_data['value'] = float(value)
+                    card_data['value'] = safe_float(value)
                 else:
-                    # Use intcomma formatting for large numbers in the template
-                    #card_data['value'] = value
-                    card_data['value'] = float(value)
+                    card_data['value'] = safe_float(value)
     
                 card_data['key'] = key
                 card_data['order'] = item.get('order', 99)

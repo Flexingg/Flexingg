@@ -17,58 +17,217 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
     created_workouts = []
     updated_workouts = []
 
+    # (moved) top-level info log will be emitted after inputs are normalized below
+
+    # Normalize incoming payload shapes and log counts for visibility
+    def _ensure_list(x):
+        if x is None:
+            return []
+        if isinstance(x, list):
+            return x
+        if isinstance(x, dict):
+            # Try common container keys used by APIs/libraries
+            for key in ('activities', 'data', 'results', 'workouts', 'records', 'items'):
+                if key in x and isinstance(x[key], list):
+                    return x[key]
+            # If dict is actually a single record, wrap it
+            return [x]
+        # Fallback: wrap whatever truthy value into a list
+        return [x]
+
+    garmin_activities = _ensure_list(garmin_activities)
+    garmin_steps = _ensure_list(garmin_steps)
+    garmin_hydration = _ensure_list(garmin_hydration)
+    liftosaur_workouts = []
+    if isinstance(liftosaur_data, list):
+        liftosaur_workouts = liftosaur_data
+    elif isinstance(liftosaur_data, dict):
+        # Liftosaur API returns various shapes; try common keys and nested storage
+        # 1) top-level 'workouts' or 'history'
+        if 'workouts' in liftosaur_data and isinstance(liftosaur_data['workouts'], list):
+            liftosaur_workouts = liftosaur_data['workouts']
+        elif 'history' in liftosaur_data and isinstance(liftosaur_data['history'], list):
+            liftosaur_workouts = liftosaur_data['history']
+        else:
+            # 2) nested under 'storage' (common: {'storage': {'history': [...]}})
+            storage = liftosaur_data.get('storage') if isinstance(liftosaur_data.get('storage'), dict) else None
+            if storage:
+                if 'history' in storage and isinstance(storage['history'], list):
+                    liftosaur_workouts = storage['history']
+                elif 'workouts' in storage and isinstance(storage['workouts'], list):
+                    liftosaur_workouts = storage['workouts']
+                elif 'data' in storage and isinstance(storage['data'], list):
+                    liftosaur_workouts = storage['data']
+            # 3) If still empty, treat single workout-like dict as one workout (heuristic)
+            if not liftosaur_workouts:
+                if any(k in liftosaur_data for k in ('id', 'startTime', 'start_time', 'timestamp')):
+                    liftosaur_workouts = [liftosaur_data]
+                else:
+                    # Attempt to find any list-valued key that looks like workouts and log it for debugging
+                    for k, v in liftosaur_data.items():
+                        if isinstance(v, list):
+                            logger.debug(f"Liftosaur data contains list under key '{k}' (len={len(v)}); sample keys: {list(v[0].keys()) if v else '[]'}")
+    else:
+        liftosaur_workouts = []
+
+    logger.debug(f"Data processor input shapes - garmin_activities: {len(garmin_activities)}, garmin_steps: {len(garmin_steps)}, garmin_hydration: {len(garmin_hydration)}, liftosaur_workouts: {len(liftosaur_workouts)}, hc_data_keys: {list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data)}")
+    if not liftosaur_workouts and liftosaur_data:
+        try:
+            logger.info(f"Liftosaur payload keys for user {user.username}: {list(liftosaur_data.keys()) if isinstance(liftosaur_data, dict) else type(liftosaur_data)}")
+            # if storage present, show nested keys
+            if isinstance(liftosaur_data, dict) and 'storage' in liftosaur_data and isinstance(liftosaur_data['storage'], dict):
+                logger.info(f"Liftosaur.storage keys: {list(liftosaur_data['storage'].keys())}")
+        except Exception:
+            logger.debug("Failed to log Liftosaur payload sample for debugging")
+
+    # Add top-level info so we can see priorities and input sizes in logs (safe position)
+    try:
+        logger.info(f"Processing inputs for user {user.username}: priorities={priorities_by_type}; garmin_activities={len(garmin_activities)}, garmin_steps={len(garmin_steps)}, garmin_hydration={len(garmin_hydration)}, liftosaur_workouts={len(liftosaur_workouts)}; hc_keys={(list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data))}")
+    except Exception:
+        logger.info(f"Processing inputs for user {getattr(user, 'id', 'unknown')}: failed to stringify counts")
+
+    logger.debug(f"Data processor input shapes - garmin_activities: {len(garmin_activities)}, garmin_steps: {len(garmin_steps)}, garmin_hydration: {len(garmin_hydration)}, liftosaur_workouts: {len(liftosaur_workouts)}, hc_data_keys: {list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data)}")
+
+    # Build an effective priorities mapping that falls back to any available sources
+    # This prevents the sync from skipping all workouts when the user only has a high-priority
+    # source configured but that source has no data for the period.
+    effective_priorities_by_type = {}
+    for dt in ['workout', 'sleep', 'steps', 'water']:
+        # start with explicit user priorities if present
+        user_sources = list(priorities_by_type.get(dt, [])) if isinstance(priorities_by_type, dict) else []
+        # Add sources that have data but are not present in user priorities (as fallback)
+        if dt == 'workout':
+            if 'liftosaur' not in user_sources and len(liftosaur_workouts) > 0:
+                user_sources.append('liftosaur')
+            if 'garmin' not in user_sources and len(garmin_activities) > 0:
+                user_sources.append('garmin')
+            if 'healthconnect' not in user_sources and isinstance(hc_data, dict) and 'exerciseSession' in hc_data and hc_data.get('exerciseSession'):
+                user_sources.append('healthconnect')
+        elif dt == 'sleep':
+            if 'healthconnect' not in user_sources and isinstance(hc_data, dict) and 'sleepSession' in hc_data and hc_data.get('sleepSession'):
+                user_sources.append('healthconnect')
+        elif dt == 'steps':
+            if 'garmin' not in user_sources and len(garmin_steps) > 0:
+                user_sources.append('garmin')
+            if 'healthconnect' not in user_sources and isinstance(hc_data, dict) and 'steps' in hc_data and hc_data.get('steps'):
+                user_sources.append('healthconnect')
+        elif dt == 'water':
+            if 'healthconnect' not in user_sources and isinstance(hc_data, dict) and 'hydration' in hc_data and hc_data.get('hydration'):
+                user_sources.append('healthconnect')
+            if 'garmin' not in user_sources and len(garmin_hydration) > 0:
+                user_sources.append('garmin')
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = []
+        for s in user_sources:
+            if s not in seen:
+                seen.add(s)
+                deduped.append(s)
+        effective_priorities_by_type[dt] = deduped
+
+    logger.info(f"Effective priorities for user {user.username}: {effective_priorities_by_type}")
+
     for data_type in ['workout', 'sleep', 'steps', 'water']:
-        if data_type not in priorities_by_type:
-            logger.warning(f"No priorities set for {data_type} for user {user.username}; skipping.")
+        # use effective priorities (falls back to available sources)
+        if data_type not in effective_priorities_by_type or not effective_priorities_by_type.get(data_type):
+            logger.warning(f"No priorities (or available sources) set for {data_type} for user {user.username}; skipping.")
             continue
         filled_dates = set()
-        for source in priorities_by_type[data_type]:
+        for source in effective_priorities_by_type[data_type]:
             if data_type == 'workout':
                 if source == 'garmin':
+                    from .normalization import normalize_garmin_activity_to_workout
+                    # surface some info so we can debug why no workouts are created
+                    before_created = len(created_workouts)
+                    before_updated = len(updated_workouts)
+                    logger.info(f"Starting Garmin activity processing for user {user.username}: {len(garmin_activities)} activities found")
+                    if garmin_activities:
+                        try:
+                            sample = garmin_activities[0]
+                            logger.info(f"Sample Garmin activity id: {sample.get('activityId', '[no id]')}, keys: {list(sample.keys())}")
+                        except Exception:
+                            logger.debug("Failed to log sample Garmin activity")
+                    else:
+                        logger.info("No Garmin activities to process")
+
                     for activity in garmin_activities:
-                        # Normalization should be done upstream (core.normalization)
-                        from .normalization import normalize_garmin_activity_to_workout
-                        norm = normalize_garmin_activity_to_workout(activity)
-                        if norm:
-                            existing = Workout.objects.filter(user=user, source='garmin', source_id=norm['source_id']).first()
-                            if existing:
-                                needs_update = (
-                                    existing.start_time != norm['start_time'] or
-                                    existing.end_time != norm['end_time'] or
-                                    existing.data != norm['data']
-                                )
-                                if needs_update:
-                                    existing.start_time = norm['start_time']
-                                    existing.end_time = norm['end_time']
-                                    existing.data = norm['data']
-                                    existing.save()
-                                    updated_workouts.append(existing)
-                            else:
+                        norm = None
+                        try:
+                            norm = normalize_garmin_activity_to_workout(activity)
+                        except Exception as e:
+                            logger.exception(f"Exception during normalization of Garmin activity for user {user.username}: {e}")
+                            norm = None
+                        if not norm:
+                            logger.debug(f"normalize_garmin_activity_to_workout returned None for activity (maybe unsupported format): {activity.get('activityId', '[no id]')}")
+                            continue
+                        sid = norm.get('source_id')
+                        if not sid:
+                            logger.debug(f"Normalized Garmin activity missing source_id; skipping. Norm keys: {list(norm.keys()) if isinstance(norm, dict) else norm}")
+                            continue
+                        existing = Workout.objects.filter(user=user, source='garmin', source_id=sid).first()
+                        if existing:
+                            needs_update = (
+                                existing.start_time != norm.get('start_time') or
+                                existing.end_time != norm.get('end_time') or
+                                existing.data != norm.get('data')
+                            )
+                            if needs_update:
+                                existing.start_time = norm.get('start_time')
+                                existing.end_time = norm.get('end_time')
+                                existing.data = norm.get('data')
+                                existing.save()
+                                updated_workouts.append(existing)
+                                logger.info(f"Updated existing Garmin workout {existing.source_id} for user {user.username}")
+                        else:
+                            try:
                                 w = Workout.objects.create(user=user, source='garmin', **norm)
                                 created_workouts.append(w)
+                                logger.info(f"Created Garmin workout {sid} for user {user.username}")
+                            except Exception as e:
+                                logger.exception(f"Failed to create Garmin workout for normalized record {sid}: {e}")
+                                continue
+
+                    created_delta = len(created_workouts) - before_created
+                    updated_delta = len(updated_workouts) - before_updated
+                    logger.info(f"Finished Garmin activity processing for user {user.username}: created={created_delta}, updated={updated_delta}")
                 elif source == 'liftosaur' and liftosaur_data:
                     from .normalization import normalize_liftosaur_workout
-                    # Fix: Liftosaur API returns workouts at top level, not under storage.history
-                    for workout in liftosaur_data.get('workouts', []):
-                        norm = normalize_liftosaur_workout(workout)
-                        if norm['start_time'].date() not in filled_dates:
-                            existing = Workout.objects.filter(user=user, source='liftosaur', source_id=norm['source_id']).first()
-                            if existing:
-                                needs_update = (
-                                    existing.start_time != norm['start_time'] or
-                                    existing.end_time != norm['end_time'] or
-                                    existing.data != norm['data']
-                                )
-                                if needs_update:
-                                    existing.start_time = norm['start_time']
-                                    existing.end_time = norm['end_time']
-                                    existing.data = norm['data']
-                                    existing.save()
-                                    updated_workouts.append(existing)
-                            else:
-                                w = Workout.objects.create(user=user, source='liftosaur', **norm)
-                                created_workouts.append(w)
-                            filled_dates.add(norm['start_time'].date())
+                    # Use normalized liftosaur_workouts list prepared above
+                    if not liftosaur_workouts:
+                        logger.debug(f"No Liftosaur workouts to process for user {user.username}")
+                    for workout in liftosaur_workouts:
+                        try:
+                            norm = normalize_liftosaur_workout(workout)
+                        except Exception as e:
+                            logger.exception(f"Exception normalizing Liftosaur workout for user {user.username}: {e}")
+                            continue
+                        if not norm:
+                            logger.debug(f"normalize_liftosaur_workout returned None for workout: {workout.get('id', '[no id]')}")
+                            continue
+                        st_date = norm.get('start_time').date() if norm.get('start_time') else None
+                        if st_date and st_date in filled_dates:
+                            logger.debug(f"Skipping Liftosaur workout {norm.get('source_id')} due to filled date {st_date}")
+                            continue
+                        existing = Workout.objects.filter(user=user, source='liftosaur', source_id=norm.get('source_id')).first()
+                        if existing:
+                            needs_update = (
+                                existing.start_time != norm.get('start_time') or
+                                existing.end_time != norm.get('end_time') or
+                                existing.data != norm.get('data')
+                            )
+                            if needs_update:
+                                existing.start_time = norm.get('start_time')
+                                existing.end_time = norm.get('end_time')
+                                existing.data = norm.get('data')
+                                existing.save()
+                                updated_workouts.append(existing)
+                                logger.debug(f"Updated existing Liftosaur workout {existing.source_id} for user {user.username}")
+                        else:
+                            w = Workout.objects.create(user=user, source='liftosaur', **norm)
+                            created_workouts.append(w)
+                            logger.debug(f"Created Liftosaur workout {norm.get('source_id')} for user {user.username}")
+                        if st_date:
+                            filled_dates.add(st_date)
                 elif source == 'healthconnect' and 'exerciseSession' in hc_data:
                     from .normalization import normalize_hc_workout
                     for exercise in hc_data['exerciseSession']:
@@ -86,7 +245,6 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.end_time = norm['end_time']
                                     existing.data = norm['data']
                                     existing.save()
-                                    updated_workouts.append(existing)
                             else:
                                 w = Workout.objects.create(user=user, source='healthconnect', **norm)
                                 created_workouts.append(w)

@@ -16,8 +16,10 @@ from .models import SweatScoreWeights, UserProfile, Friendship
 from garminconnect.models import Garmin_Auth, GarminDailySteps, GarminActivity
 from .models import Workout, DailySteps, Sleep, DailyWater
 from .models import *  # JWT, Notification, Relationship
+from .sync_service import sync_user_data
 from healthconnect.utils import get_daily_consumed_calories
 from healthconnect.sync_tasks import healthconnect_sync_task
+
 from django.contrib.staticfiles.finders import find
 from django.http import HttpResponse, JsonResponse
 from django.contrib.auth.models import User

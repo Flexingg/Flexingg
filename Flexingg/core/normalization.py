@@ -11,29 +11,67 @@ def normalize_garmin_activity_to_workout(activity):
     start_time_gmt = activity.get('startTimeGMT')
     start_time = None
 
+    def _ts_to_datetime(ts_value):
+        """
+        Convert a numeric timestamp (seconds or milliseconds) to a timezone-aware datetime.
+        Many APIs sometimes return seconds (1.6e9) or milliseconds (1.6e12).
+        We detect magnitude: values > 1e11 are treated as milliseconds.
+        """
+        try:
+            val = float(ts_value)
+        except (TypeError, ValueError):
+            return None
+        # If very large, assume milliseconds; otherwise seconds
+        if abs(val) > 1e11:
+            # milliseconds -> seconds
+            sec = val / 1000.0
+        else:
+            sec = val
+        # Use timezone-aware UTC datetime
+        try:
+            return datetime.fromtimestamp(sec, tz=timezone.utc)
+        except Exception:
+            try:
+                # Fallback: naive datetime then make aware
+                return timezone.make_aware(datetime.fromtimestamp(sec))
+            except Exception:
+                return None
+
     if isinstance(start_time_gmt, str):
-        # Try to parse as datetime string first (format: "2023-11-23 09:36:51")
+        # Try to parse as datetime string first (format: "2023-11-23 09:36:51" or ISO)
         try:
             # Handle both formats: "2023-11-23 09:36:51" and "2023-11-23T09:36:51"
             if 'T' in start_time_gmt:
                 start_time = datetime.fromisoformat(start_time_gmt.replace('Z', '+00:00'))
+                if start_time.tzinfo is None:
+                    start_time = timezone.make_aware(start_time)
             else:
+                # Try common space-separated format
                 start_time = datetime.strptime(start_time_gmt, '%Y-%m-%d %H:%M:%S')
-            start_time = timezone.make_aware(start_time)
+                start_time = timezone.make_aware(start_time)
         except (ValueError, TypeError):
-            # If datetime parsing fails, try as Unix timestamp
-            try:
-                start_time_gmt = float(start_time_gmt)
-                start_time = timezone.make_aware(datetime.fromtimestamp(start_time_gmt / 1000))
-            except (ValueError, TypeError):
+            # If datetime parsing fails, try as numeric timestamp (string containing digits)
+            dt = _ts_to_datetime(start_time_gmt)
+            if dt:
+                start_time = dt
+            else:
                 logger.error(f"Failed to parse startTimeGMT '{start_time_gmt}' (type: {type(start_time_gmt)}) for activity {activity.get('activityId')}. Raw activity data: {activity}")
                 return None
     elif isinstance(start_time_gmt, (int, float)):
-        # Handle Unix timestamp
-        start_time = timezone.make_aware(datetime.fromtimestamp(start_time_gmt / 1000))
+        # Convert numeric timestamp, detect ms vs s
+        dt = _ts_to_datetime(start_time_gmt)
+        if dt:
+            start_time = dt
+        else:
+            logger.error(f"Failed to convert numeric startTimeGMT '{start_time_gmt}' for activity {activity.get('activityId')}. Raw activity data: {activity}")
+            return None
     else:
         logger.error(f"Unknown startTimeGMT type: {type(start_time_gmt)} for activity {activity.get('activityId')}. Value: {start_time_gmt}. Raw activity data: {activity}")
         return None
+
+    # Ensure start_time is timezone-aware; coerce if necessary
+    if start_time and start_time.tzinfo is None:
+        start_time = timezone.make_aware(start_time)
 
     # Handle duration as well
     duration = activity.get('duration', 0)
