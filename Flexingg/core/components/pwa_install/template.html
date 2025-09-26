@@ -37,6 +37,16 @@ function checkPWA() {
     }
 }
 
+function sendPWAEvent(eventName, details = {}) {
+    try {
+        fetch('/api/pwa/event/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: eventName, details: details })
+        }).catch(() => { /* swallow errors */ });
+    } catch (e) { /* noop */ }
+}
+
 function installPWA() {
     // Check if the app is already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
@@ -49,6 +59,7 @@ function installPWA() {
         window.deferredPrompt.userChoice.then((choiceResult) => {
             if (choiceResult.outcome === 'accepted') {
                 console.log('User accepted the install prompt');
+                sendPWAEvent('prompt_accepted', { source: 'install_banner' });
                 // Hide the banner after successful install
                 const banner = document.getElementById('pwa-install-banner');
                 if (banner) {
@@ -56,7 +67,11 @@ function installPWA() {
                 }
             } else {
                 console.log('User dismissed the install prompt');
+                sendPWAEvent('prompt_dismissed', { source: 'install_banner' });
             }
+            window.deferredPrompt = null;
+        }).catch(err => {
+            console.error('Error showing install prompt', err);
             window.deferredPrompt = null;
         });
     } else {
@@ -65,20 +80,8 @@ function installPWA() {
     }
 }
 
-// Listen for the beforeinstallprompt event
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    window.deferredPrompt = e;
-});
-
 // Check PWA status on page load
 document.addEventListener('DOMContentLoaded', checkPWA);
 
-// Also check when the app is installed
-window.addEventListener('appinstalled', () => {
-    const banner = document.getElementById('pwa-install-banner');
-    if (banner) {
-        banner.style.display = 'none';
-    }
-});
+// Note: beforeinstallprompt and appinstalled listeners are handled globally in base.html
 </script>

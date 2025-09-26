@@ -230,6 +230,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = 'core.UserProfile'
 
+# Where to redirect for login_required and similar helpers (use the named URL in core.urls)
+LOGIN_URL = 'fitness:sign_in'
+# Where to redirect after a successful login (named URL)
+LOGIN_REDIRECT_URL = 'fitness:home'
+
+# Sane defaults for local development to avoid common CSRF/session issues.
+# In production you should set CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE = True and adjust SAMESITE as needed.
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+
 
 # Celery Configuration
 CELERY_BROKER_URL = 'redis://redis:6379/0'

@@ -85,6 +85,28 @@ class UserProfile(AbstractUser):
 
 
     def earn_gym_gems(self, amount, garmin_activity=None) -> None:
+        def _get_activity_time(obj):
+            if obj is None:
+                return None
+            try:
+                # model-like objects: common datetime fields
+                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    val = getattr(obj, attr, None)
+                    if val:
+                        return val
+                # dict-like objects
+                if isinstance(obj, dict):
+                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                        if obj.get(key):
+                            return obj.get(key)
+            except Exception:
+                return None
+            return None
+
+        activity_time = _get_activity_time(garmin_activity)
+        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
+            # Do not award currency for activities that occurred before the user joined
+            return
         Transaction.objects.create(
             user=self,
             currency_type='gym_gems',
@@ -95,6 +117,26 @@ class UserProfile(AbstractUser):
         self.save()
 
     def earn_cardio_coins(self, amount, garmin_activity=None) -> None:
+        def _get_activity_time(obj):
+            if obj is None:
+                return None
+            try:
+                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    val = getattr(obj, attr, None)
+                    if val:
+                        return val
+                if isinstance(obj, dict):
+                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                        if obj.get(key):
+                            return obj.get(key)
+            except Exception:
+                return None
+            return None
+
+        activity_time = _get_activity_time(garmin_activity)
+        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
+            # Do not award currency for activities that occurred before the user joined
+            return
         Transaction.objects.create(
             user=self,
             currency_type='cardio_coins',
@@ -102,6 +144,41 @@ class UserProfile(AbstractUser):
             garmin_activity=garmin_activity
         )
         self.cardio_coins += amount
+        self.save()
+
+    def earn_xp(self, xp_points: int, garmin_activity=None) -> None:
+        def _get_activity_time(obj):
+            if obj is None:
+                return None
+            try:
+                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    val = getattr(obj, attr, None)
+                    if val:
+                        return val
+                if isinstance(obj, dict):
+                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                        if obj.get(key):
+                            return obj.get(key)
+            except Exception:
+                return None
+            return None
+
+        activity_time = _get_activity_time(garmin_activity)
+        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
+            # Do not award XP for activities that occurred before the user joined
+            return
+        Transaction.objects.create(
+            user=self,
+            currency_type='xp',
+            amount=0,
+            xp_awarded=int(xp_points),
+            garmin_activity=garmin_activity
+        )
+        # store XP on user profile
+        try:
+            self.xp = int(self.xp) + int(xp_points)
+        except Exception:
+            self.xp = int(xp_points)
         self.save()
 
 

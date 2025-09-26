@@ -1,6 +1,10 @@
-// Service Worker Version
-const VERSION = '1.0.0';
-const CACHE_NAME = `flexingg-cache-${VERSION}`;
+// Service Worker - Flexin.gg (stabilized)
+
+// Versioned cache names
+const CACHE_VERSION = 'v2025-09-25-01';
+const APP_SHELL_CACHE = `flexingg-app-shell-${CACHE_VERSION}`;
+const RUNTIME_CACHE_STATIC = `flexingg-runtime-static-${CACHE_VERSION}`;
+const RUNTIME_CACHE_API = `flexingg-runtime-api-${CACHE_VERSION}`;
 
 // Debug mode
 const DEBUG = true;
@@ -10,181 +14,206 @@ function log(...args) {
     }
 }
 
-const VERSION = '1.0.2';
-// Assets that need to be available offline
+// Assets that need to be available offline (app shell)
 const ASSETS_TO_CACHE = [
     '/',
     '/offline.html',
     '/manifest.json',
     '/static/app/manifest.json',
     '/static/app/favicon.ico',
-    '/static/app/sw.js',
-    'https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js',
-    'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
+    '/static/app/icons/icon-192.png',
+    '/static/app/icons/icon-512.png',
+    '/static/app/sw.js'
 ];
 
-// Install event - cache static assets
+// Install - cache app shell
 self.addEventListener('install', event => {
-    log('Installing...');
-    
+    log('Installing service worker, caching app shell...');
     event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                log('Caching app shell and static assets');
-                return cache.addAll(ASSETS_TO_CACHE);
-            })
-            .catch(error => {
-                log('Error caching static assets:', error);
-            })
+        caches.open(APP_SHELL_CACHE)
+            .then(cache => cache.addAll(ASSETS_TO_CACHE))
+            .catch(err => log('Failed to cache app shell:', err))
     );
-
-    // Force activation of new SW
+    // Activate new SW as soon as it's finished installing
     self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate - clean up old caches and enable navigation preload
 self.addEventListener('activate', event => {
-    log('Activating...');
-    
-    event.waitUntil(
-        Promise.all([
-            // Clean up old caches
-            caches.keys().then(cacheNames => {
-                return Promise.all(
-                    cacheNames.map(cacheName => {
-                        if (cacheName !== CACHE_NAME) {
-                            log('Deleting old cache:', cacheName);
-                            return caches.delete(cacheName);
-                        }
-                    })
-                );
+    log('Activating service worker...', CACHE_VERSION);
+    event.waitUntil((async () => {
+        // Enable navigation preload if supported
+        if (self.registration && self.registration.navigationPreload) {
+            try {
+                await self.registration.navigationPreload.enable();
+                log('Navigation preload enabled');
+            } catch (err) {
+                log('Navigation preload enable failed:', err);
+            }
+        }
+
+        // Claim clients so the SW starts controlling pages immediately
+        self.clients && self.clients.claim && self.clients.claim();
+
+        // Delete old caches not matching the current version
+        const cacheNames = await caches.keys();
+        await Promise.all(
+            cacheNames.map(name => {
+                if (![APP_SHELL_CACHE, RUNTIME_CACHE_STATIC, RUNTIME_CACHE_API].includes(name)) {
+                    log('Deleting old cache:', name);
+                    return caches.delete(name);
+                }
             })
-        ])
-    );
+        );
+    })());
 });
 
-// Fetch event - network first with cache fallback
+// Helper: trim cache to a max item count (simple LRU-ish)
+async function trimCache(cacheName, maxItems = 100) {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length > maxItems) {
+        for (let i = 0; i < keys.length - maxItems; i++) {
+            await cache.delete(keys[i]);
+        }
+    }
+}
+
+// Fetch - routing strategies
 self.addEventListener('fetch', event => {
-    // Bypass service worker for non-GET requests, AJAX (e.g., POST, XHR), and API endpoints
-    const url = new URL(event.request.url);
-    const isAjax = event.request.headers.has('X-Requested-With') || event.request.mode === 'cors' || event.request.destination === 'empty';
-    const isApi = url.pathname.startsWith('/healthconnect/') || url.pathname.startsWith('/garminconnect/') || url.pathname.startsWith('/liftosaur/');
-    if (event.request.method !== 'GET' || isAjax || isApi) {
-        event.respondWith(fetch(event.request));
+    const request = event.request;
+    const url = new URL(request.url);
+
+    // Bypass SW for non-GET requests or for deliberately excluded endpoints
+    const isGet = request.method === 'GET';
+    const isApi = url.pathname.startsWith('/healthconnect/') ||
+                  url.pathname.startsWith('/garminconnect/') ||
+                  url.pathname.startsWith('/liftosaur/') ||
+                  url.pathname.startsWith('/api/') ||
+                  url.pathname.startsWith('/auth/');
+
+    // Always let navigation preload handle initial navigation where possible
+    if (!isGet || isApi) {
+        // Network-only for non-GET and critical API/auth endpoints
+        event.respondWith(fetch(request).catch(() => caches.match('/offline.html')));
         return;
     }
-    
-    // Handle navigation requests
-    if (event.request.mode === 'navigate') {
-        event.respondWith(
-            (async () => {
-                try {
-                    const response = await fetch(event.request);
-                    if (response && response.status === 200) {
-                        const responseToCache = response.clone();
-                        const cache = await caches.open(CACHE_NAME);
-                        await cache.put(event.request, responseToCache);
-                        log('Cached navigation page:', event.request.url);
+
+    // Handle navigation requests (pages)
+    if (request.mode === 'navigate') {
+        event.respondWith((async () => {
+            // Try preloadResponse first (fast), then network, then cache fallback
+            try {
+                const preloadResponse = await event.preloadResponse;
+                if (preloadResponse) {
+                    log('Using preload response for navigation:', url.pathname);
+                    return preloadResponse;
+                }
+
+                const networkResponse = await fetch(request);
+                // Optionally cache the navigation response in app-shell cache
+                if (networkResponse && networkResponse.ok) {
+                    const cache = await caches.open(APP_SHELL_CACHE);
+                    cache.put(request, networkResponse.clone()).catch(err => log('Cache put failed:', err));
+                }
+                return networkResponse;
+            } catch (err) {
+                log('Navigation fetch failed, serving offline page:', err);
+                const cache = await caches.open(APP_SHELL_CACHE);
+                const cached = await cache.match('/offline.html');
+                return cached || (await caches.match('/')) || new Response('Offline', { status: 503, statusText: 'Offline' });
+            }
+        })());
+        return;
+    }
+
+    // Static assets (under /static/) => stale-while-revalidate
+    if (request.url.includes('/static/')) {
+        event.respondWith((async () => {
+            const cache = await caches.open(RUNTIME_CACHE_STATIC);
+            const cachedResponse = await cache.match(request);
+            const networkFetch = fetch(request)
+                .then(response => {
+                    if (response && response.ok) {
+                        cache.put(request, response.clone()).catch(err => log('Failed to put static asset into cache:', err));
+                        trimCache(RUNTIME_CACHE_STATIC, 200);
                     }
                     return response;
-                } catch (error) {
-                    log('Navigation fetch failed, serving offline page');
-                    const cache = await caches.open(CACHE_NAME);
-                    const cachedResponse = await cache.match('/offline.html');
-                    return cachedResponse || await caches.match('/');
-                }
-            })()
-        );
-        return;
-    }
-
-    // Handle static asset requests
-    if (event.request.url.includes('/static/')) {
-        event.respondWith(
-            caches.match(event.request)
-                .then(cachedResponse => {
-                    if (cachedResponse) {
-                        log('Serving from cache:', event.request.url);
-                        return cachedResponse;
-                    }
-                    
-                    return fetch(event.request)
-                        .then(response => {
-                            // Cache successful responses
-                            if (response.ok) {
-                                const responseToCache = response.clone();
-                                caches.open(CACHE_NAME)
-                                    .then(cache => {
-                                        cache.put(event.request, responseToCache);
-                                        log('Cached new resource:', event.request.url);
-                                    });
-                            }
-                            return response;
-                        })
-                        .catch(error => {
-                            log('Fetch failed:', error);
-                            throw error;
-                        });
                 })
-        );
+                .catch(err => {
+                    log('Network fetch for static asset failed:', err);
+                    return null;
+                });
+
+            // Serve cached if available, otherwise wait for network
+            return cachedResponse || networkFetch;
+        })());
         return;
     }
 
-    // Default fetch behavior for remaining GET requests
-    event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                if (response && response.status === 200 && !isAjax && !isApi) {
-                    const responseToCache = response.clone();
-                    caches.open(CACHE_NAME).then(cache => {
-                        cache.put(event.request, responseToCache);
-                        log('Cached dynamic resource:', event.request.url);
-                    });
-                }
-                return response;
-            })
-            .catch(() => {
-                return caches.match(event.request);
-            })
-    );
+    // API / dynamic GETs => network-first with cache fallback
+    event.respondWith((async () => {
+        try {
+            const response = await fetch(request);
+            if (response && response.ok) {
+                const cache = await caches.open(RUNTIME_CACHE_API);
+                cache.put(request, response.clone()).catch(err => log('Failed to cache API response:', err));
+                trimCache(RUNTIME_CACHE_API, 100);
+            }
+            return response;
+        } catch (err) {
+            log('Network failed for dynamic request, attempting cache:', request.url, err);
+            const cache = await caches.open(RUNTIME_CACHE_API);
+            const cached = await cache.match(request);
+            return cached || (await caches.match('/offline.html')) || new Response('Offline', { status: 503, statusText: 'Offline' });
+        }
+    })());
 });
 
-// Handle push notifications
+// Push notifications
 self.addEventListener('push', event => {
-    log('Push notification received');
-    
+    log('Push event received');
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : { title: 'Flexin.gg', body: 'You have a notification' };
+    } catch (err) {
+        // event.data.text() fallback if not JSON
+        try {
+            payload = event.data ? { title: 'Flexin.gg', body: event.data.text() } : { title: 'Flexin.gg', body: 'You have a notification' };
+        } catch (e) {
+            payload = { title: 'Flexin.gg', body: 'You have a notification' };
+        }
+    }
+
+    const title = payload.title || 'Flexin.gg';
     const options = {
-        body: event.data.text(),
-        icon: '/static/icons/icon-192x192.png',
-        badge: '/static/icons/icon-96x96.png',
-        data: {
-            dateOfArrival: Date.now(),
-            primaryKey: '1'
-        },
-        actions: [
-            {
-                action: 'explore',
-                title: 'Open Flexin.gg',
-                icon: '/static/icons/icon-faith.svg'
-            }
-        ]
+        body: payload.body || '',
+        icon: payload.icon || '/static/app/icons/icon-192.png',
+        badge: payload.badge || '/static/app/icons/icon-96.png',
+        data: payload.data || { dateOfArrival: Date.now() },
+        actions: payload.actions || []
     };
 
-    event.waitUntil(
-        self.registration.showNotification('Flexin.gg', options)
-    );
+    event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Handle notification clicks
+// Notification click handling
 self.addEventListener('notificationclick', event => {
-    log('Notification clicked');
-    
+    log('Notification clicked', event.notification);
     event.notification.close();
 
-    if (event.action === 'explore') {
-        event.waitUntil(
-            clients.openWindow('/')
-        );
-    }
+    const urlToOpen = (event.notification && event.notification.data && event.notification.data.url) ? event.notification.data.url : '/';
+    event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+        // Try to focus an existing client
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if (client.url === urlToOpen && 'focus' in client) {
+                return client.focus();
+            }
+        }
+        // Otherwise open a new window/tab
+        if (clients.openWindow) {
+            return clients.openWindow(urlToOpen);
+        }
+    }));
 });

@@ -2,7 +2,6 @@
 {% load component_tags %}
 
 <div class="pixel-border bg-[#2a2a2a] p-6">
-    <h2 class="text-xl font-pixel text-white mb-4">Gym Locker</h2>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         {% if slots %}
@@ -13,7 +12,10 @@
                 </div>
             {% endfor %}
         {% else %}
-            <p class="text-gray-400 text-center col-span-full py-8 font-pixel">No items equipped yet. Visit the Item Shop to get started!</p>
+            <p class="text-gray-400 text-center col-span-full py-8 font-pixel">No items equipped yet. Equip gear in the locker room get started!</p>
+            <div class="text-center col-span-full mt-2">
+                <a href='{% url "fitness:locker_room" %}' class="pixel-button px-3 py-2 font-pixel text-xs text-green-400">Locker Room</a>
+            </div>
         {% endif %}
     </div>
 </div>

@@ -38,6 +38,10 @@ from django.db import transaction
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from .currency_service import get_next_level_xp, get_level_progress_percentage
+from django.views.decorators.csrf import csrf_exempt
+import json
+from django.utils.decorators import method_decorator
+from django.views.decorators.http import require_POST
 
 def _workout_volume_lbs(workout):
     """
@@ -112,12 +116,12 @@ def _workout_volume_lbs(workout):
         pass
     return 0.0
 
-
-
 class HomeView(TemplateView):
     template_name = 'home.html'
 
     def get_context_data(self, **kwargs):
+        # Ensure profile is always defined in this scope to avoid UnboundLocalError for anonymous users
+        profile = None
         context = super().get_context_data(**kwargs)
         if self.request.user.is_authenticated:
             profile = self.request.user
@@ -164,34 +168,32 @@ class HomeView(TemplateView):
                 context['sync_triggered'] = True
                 context['sync_user_id'] = profile.id
                 logger.info(f"Triggered general sync for profile {profile.id}")
-                # Show bodyweight prompt when user has no synced weight (manual entry helpful)
-                context['show_bodyweight_prompt'] = True if (getattr(profile, 'weight') in [None, ''] ) else False
-        
+
             # Calculate today's total calories from the current user's unified workouts
             today = timezone.localtime().date()
             context['todays_date'] = today.isoformat()
             todays_calories = 0
-            workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
+            workouts = Workout.objects.filter(user=profile, start_time__date=today)
             for workout in workouts:
                 if workout.source == 'garmin':
                     todays_calories += workout.data.get('calories', 0)
             context['todays_total_calories'] = todays_calories
 
             todays_steps = DailySteps.objects.filter(
-                user=self.request.user,
+                user=profile,
                 date=today
             ).aggregate(total=Sum('steps'))['total'] or 0
             context['todays_steps'] = todays_steps
             # Calculate today's water intake
             todays_water_ounces = DailyWater.objects.filter(
-                user=self.request.user,
+                user=profile,
                 date=today
             ).aggregate(total=Sum('amount_ounces'))['total'] or 0
             context['todays_water_ounces'] = todays_water_ounces
 
             # Calculate today's lifting volume using a robust helper
             total_volume = 0.0
-            workouts = Workout.objects.filter(user=self.request.user, start_time__date=today)
+            workouts = Workout.objects.filter(user=profile, start_time__date=today)
             for workout in workouts:
                 vol_lbs = _workout_volume_lbs(workout)
                 # volume_k is thousands of lbs
@@ -199,104 +201,103 @@ class HomeView(TemplateView):
                 print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
                 total_volume += vol_k
             context['todays_lifting_volume_k'] = total_volume
-
-
-
-            # Calculate today's consumed calories from Health Connect nutrition
-            todays_consumed_calories = get_daily_consumed_calories(profile)
+            # Calculate today's consumed calories from Health Connect nutrition (only for authenticated users)
+            if profile:
+                try:
+                    todays_consumed_calories = get_daily_consumed_calories(profile)
+                except Exception:
+                    logger.exception("Error fetching daily consumed calories for profile %s", getattr(profile, 'id', 'unknown'))
+                    todays_consumed_calories = 0
+            else:
+                todays_consumed_calories = 0
             context['todays_consumed_calories'] = todays_consumed_calories
             context['todays_water_ounces'] = 0
 
-        else:
-            context['todays_total_calories'] = 0
-            context['todays_steps'] = 0
-            context['todays_lifting_volume_k'] = 0
-            context['todays_consumed_calories'] = 0
+            # Add recent sleep entries
+            user = self.request.user
+            if user.is_authenticated:
+                recent_sleep = Sleep.objects.filter(user=user).order_by('-start_time')[:2]
+                for sleep in recent_sleep:
+                    if sleep.end_time and sleep.start_time:
+                        sleep_hours = (sleep.end_time - sleep.start_time).total_seconds() / 3600
+                        days_ago = (timezone.now().date() - sleep.start_time.date()).days
+                        relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+                        details = {
+                            'source': sleep.source,
+                            'start_time': sleep.start_time,
+                            'end_time': sleep.end_time,
+                            'data': sleep.data,
+                        }
+                        recent_activities.append({
+                            'type': 'sleep',
+                            'name': 'Sleep Session',
+                            'relative_date': relative_date,
+                            'time': sleep.start_time.strftime('%I:%M %p'),
+                            'metric': round(sleep_hours, 1),
+                            'unit': 'hrs',
+                            'duration': None,
+                            'xp': 0,  # Sleep doesn't give XP in this system
+                            'sort_date': sleep.start_time if sleep.start_time.tzinfo else timezone.make_aware(sleep.start_time),
+                            'details': details
+                        })
 
-        # Add recent sleep entries
-        user = self.request.user
-        recent_sleep = Sleep.objects.filter(user=user).order_by('-start_time')[:2]
-        for sleep in recent_sleep:
-            if sleep.end_time and sleep.start_time:
-                sleep_hours = (sleep.end_time - sleep.start_time).total_seconds() / 3600
-                days_ago = (timezone.now().date() - sleep.start_time.date()).days
+            # Add recent water intake entries
+            recent_water = DailyWater.objects.filter(user=user).order_by('-date')[:2]
+            for water in recent_water:
+                days_ago = (timezone.now().date() - water.date).days
                 relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
                 details = {
-                    'source': sleep.source,
-                    'start_time': sleep.start_time,
-                    'end_time': sleep.end_time,
-                    'data': sleep.data,
+                    'source': water.source,
+                    'date': water.date,
+                    'amount_ounces': water.amount_ounces,
+                    'data': water.data,
                 }
                 recent_activities.append({
-                    'type': 'sleep',
-                    'name': 'Sleep Session',
+                    'type': 'water',
+                    'name': 'Water Intake',
                     'relative_date': relative_date,
-                    'time': sleep.start_time.strftime('%I:%M %p'),
-                    'metric': round(sleep_hours, 1),
-                    'unit': 'hrs',
+                    'time': 'Daily Total',
+                    'metric': round(float(water.amount_ounces), 1),
+                    'unit': 'oz',
                     'duration': None,
-                    'xp': 0,  # Sleep doesn't give XP in this system
-                    'sort_date': sleep.start_time if sleep.start_time.tzinfo else timezone.make_aware(sleep.start_time),
+                    'xp': 0,  # Water intake doesn't give XP
+                    'sort_date': timezone.make_aware(timezone.datetime.combine(water.date, timezone.datetime.min.time())),
                     'details': details
                 })
 
-        # Add recent water intake entries
-        recent_water = DailyWater.objects.filter(user=user).order_by('-date')[:2]
-        for water in recent_water:
-            days_ago = (timezone.now().date() - water.date).days
-            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
-            details = {
-                'source': water.source,
-                'date': water.date,
-                'amount_ounces': water.amount_ounces,
-                'data': water.data,
-            }
-            recent_activities.append({
-                'type': 'water',
-                'name': 'Water Intake',
-                'relative_date': relative_date,
-                'time': 'Daily Total',
-                'metric': round(float(water.amount_ounces), 1),
-                'unit': 'oz',
-                'duration': None,
-                'xp': 0,  # Water intake doesn't give XP
-                'sort_date': timezone.make_aware(timezone.datetime.combine(water.date, timezone.datetime.min.time())),
-                'details': details
-            })
+            # Add recent nutrition entries
+            recent_nutrition = NutritionEntry.objects.filter(user=user).order_by('-datetime')[:2]
+            for nutrition in recent_nutrition:
+                days_ago = (timezone.now().date() - nutrition.datetime.date()).days
+                relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
+                details = {
+                    'source': nutrition.source,
+                    'datetime': nutrition.datetime,
+                    'food_name': nutrition.food_name,
+                    'calories': nutrition.calories,
+                    'protein_grams': nutrition.protein_grams,
+                    'fat_grams': nutrition.fat_grams,
+                    'carbs_grams': nutrition.carbs_grams,
+                    'data': nutrition.data,
+                }
+                recent_activities.append({
+                    'type': 'nutrition',
+                    'name': nutrition.food_name,
+                    'relative_date': relative_date,
+                    'time': nutrition.datetime.strftime('%I:%M %p'),
+                    'metric': round(float(nutrition.calories or 0), 0),
+                    'unit': 'cal',
+                    'duration': None,
+                    'xp': 0,  # Nutrition doesn't give XP in this system
+                    'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
+                    'details': details
+                })
 
-        # Add recent nutrition entries
-        recent_nutrition = NutritionEntry.objects.filter(user=user).order_by('-datetime')[:2]
-        for nutrition in recent_nutrition:
-            days_ago = (timezone.now().date() - nutrition.datetime.date()).days
-            relative_date = 'Today' if days_ago == 0 else 'Yesterday' if days_ago == 1 else f'{days_ago} days ago'
-            details = {
-                'source': nutrition.source,
-                'datetime': nutrition.datetime,
-                'food_name': nutrition.food_name,
-                'calories': nutrition.calories,
-                'protein_grams': nutrition.protein_grams,
-                'fat_grams': nutrition.fat_grams,
-                'carbs_grams': nutrition.carbs_grams,
-                'data': nutrition.data,
-            }
-            recent_activities.append({
-                'type': 'nutrition',
-                'name': nutrition.food_name,
-                'relative_date': relative_date,
-                'time': nutrition.datetime.strftime('%I:%M %p'),
-                'metric': round(float(nutrition.calories or 0), 0),
-                'unit': 'cal',
-                'duration': None,
-                'xp': 0,  # Nutrition doesn't give XP in this system
-                'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
-                'details': details
-            })
+            # Sort by date descending
+            recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
+            context['recent_activities'] = recent_activities[:5]
 
-        # Sort by date descending
-        recent_activities.sort(key=lambda x: x['sort_date'], reverse=True)
-        context['recent_activities'] = recent_activities[:5]
-
-        return context
+            return context
 
 
 class StatsAPIView(LoginRequiredMixin, View):
@@ -339,7 +340,6 @@ class StatsAPIView(LoginRequiredMixin, View):
             vol_k = vol_lbs / 1000.0
             print(workout.id, vol_k)
             total_volume += vol_k
-        volume_k = total_volume
 
         # Water intake
         water_ounces = DailyWater.objects.filter(
@@ -347,31 +347,13 @@ class StatsAPIView(LoginRequiredMixin, View):
             date=target_date
         ).aggregate(total=Sum('amount_ounces'))['total'] or 0
 
-        # Lifting volume
+        # Lift volume
+        # Calculate lifting volume robustly in lbs
         total_volume = 0
         print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
             print(workout.id, _workout_volume_lbs(workout) / 1000.0)
-        # Lifting volume
-        total_volume = 0
-        print("Calculating lifting volume for date:", target_date)
-        workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
-        for workout in workouts:
-            print(workout.id, _workout_volume_lbs(workout) / 1000.0)
-            
-        
-        
-        
-        
-       
-
-
-
-
-
-
-
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
@@ -380,11 +362,10 @@ class StatsAPIView(LoginRequiredMixin, View):
             'date': target_date.isoformat(),
             'calories': int(calories),
             'steps': int(steps),
-            'volume_k': volume_k,
+            'volume_k': total_volume,
             'consumed': consumed,
-            'water_ounces': float(water_ounces)
+            'water_ounces': float(water_ounces),
         }
-            
 
         if get_earliest:
             earliest_candidates = []
@@ -408,6 +389,7 @@ class StatsAPIView(LoginRequiredMixin, View):
                 response_data['earliest_date'] = today.isoformat()  # No data, use today
 
         return JsonResponse(response_data)
+
 
 class SignUpView(View):
     template_name = 'sign_up.html'
@@ -499,6 +481,7 @@ def bodyweight_submit(request):
         messages.success(request, "Bodyweight saved.")
     except Exception:
         messages.error(request, "Failed to save bodyweight - try again.")
+
     return redirect('fitness:home')
 
 
@@ -558,45 +541,11 @@ class DataPriorityView(LoginRequiredMixin, View):
 
     def post(self, request):
         formset = DataPriorityFormSet(request.POST, queryset=DataPriority.objects.filter(user=request.user))
-        logger.info(f"Formset validation: {formset.is_valid()}")
         if formset.is_valid():
-            logger.info("Formset is valid. Processing data:")
-            for form in formset:
-                logger.info(f"Form cleaned_data: {form.cleaned_data}")
-            from collections import defaultdict
-            with transaction.atomic():
-                instances = formset.save(commit=False)
-                for instance in instances:
-                    instance.user = request.user
-                
-                groups = defaultdict(list)
-                for form in formset:
-                    if form.instance.pk:
-                        groups[form.cleaned_data['data_type']].append((form.instance, form.cleaned_data['rank']))
-                logger.info(f"Groups: {dict(groups)}")
-                
-                # Temporarily assign unique high ranks to avoid unique constraint violations during reassignment
-                for data_type, items in groups.items():
-                    for instance, _ in items:
-                        instance.rank = 1000 + instance.pk
-                        instance.save()
-                
-                # Assign sequential ranks based on submitted order per group
-                for data_type, items in groups.items():
-                    sorted_items = sorted(items, key=lambda x: x[1])
-                    for i, (instance, _) in enumerate(sorted_items, 1):
-                        instance.rank = i
-                    for instance, _ in sorted_items:
-                        instance.save()
-                logger.info(f"After save, current priorities: {list(DataPriority.objects.filter(user=request.user).values('data_type', 'source', 'rank'))}")
+            formset.save()
             messages.success(request, 'Data priorities updated successfully!')
             return redirect('fitness:data_priorities')
-        else:
-            logger.error(f"Formset errors: {formset.errors}")
-            logger.error(f"Formset non-form errors: {formset.non_form_errors()}")
-            for form in formset:
-                if form.errors:
-                    logger.error(f"Form {form.instance.pk if form.instance.pk else 'new'} errors: {form.errors}")
+        messages.error(request, formset.errors)
         return render(request, self.template_name, {'formset': formset})
 
 
@@ -740,15 +689,12 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         context['total_calories_consumed'] = round(float(total_calories_consumed), 0)
         context['total_protein_grams'] = round(float(total_protein_grams), 1)
 
-
         # Next level XP and progress (use Level model helpers if available)
         from .currency_service import get_next_level_xp, get_level_progress_percentage
         next_xp = get_next_level_xp(user.level)
         if next_xp is None:
             next_xp = user.level * 10000
         context['next_level_xp'] = next_xp
-        context['level_progress_percentage'] = get_level_progress_percentage(user.xp or 0, user.level or 1)
-
 
         # Recent activities (combine cardio and lifts, last 5)
         from .models import Transaction
@@ -824,6 +770,7 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                         'is_warmup': set_obj.is_warmup,
                         'notes': set_obj.notes,
                     })
+
                 exercises_details.append({
                     'exercise_name': ex.exercise_name,
                     'note': ex.note,
@@ -923,7 +870,7 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                 'protein_grams': nutrition.protein_grams,
                 'fat_grams': nutrition.fat_grams,
                 'carbs_grams': nutrition.carbs_grams,
-                'data': nutrition.data,
+                'data': nutrition.data
             }
             recent_activities.append({
                 'type': 'nutrition',
@@ -945,15 +892,51 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         return context
 
 
+@method_decorator(csrf_exempt, name='dispatch')
+class PWAEventView(View):
+    """
+    Minimal endpoint for client-side PWA analytics/events.
+    Accepts POST JSON payloads like: { "event": "prompt_accepted", "details": {...} }
+    Logs a compact summary and returns a JSON {status: ok}.
+    CSRF is disabled because the requests originate from client-side JS and are intentionally lightweight.
+    """
+    def post(self, request, *args, **kwargs):
+        # Parse JSON body defensively
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except Exception:
+            payload = {}
+
+        event = payload.get('event') or payload.get('type') or 'unknown'
+        details = payload.get('details') or {}
+
+        # Determine user context if available
+        try:
+            user_repr = request.user.username if hasattr(request, 'user') and request.user.is_authenticated else 'anonymous'
+        except Exception:
+            user_repr = 'anonymous'
+
+        # Log a compact, safe summary (avoid dumping large objects)
+        try:
+            detail_keys = list(details.keys()) if isinstance(details, dict) else str(type(details))
+        except Exception:
+            detail_keys = 'uninspectable'
+
+        logger.info(f"PWA event received: user={user_repr} event={event} detail_keys={detail_keys}")
+
+        # Return a simple acknowledgement (client ignores failures)
+        return JsonResponse({'status': 'ok'}, status=200)
+
+
 class ServiceWorkerView(View):
     def get(self, request):
         sw_path = find('app/sw.js')
         if not sw_path:
             return HttpResponse(status=404)
-        
+
         with open(sw_path, 'r') as f:
             content = f.read()
-        
+
         response = HttpResponse(content, content_type='application/javascript')
         response['Service-Worker-Allowed'] = '/'
         response['Cache-Control'] = 'no-cache'
@@ -962,6 +945,7 @@ class ServiceWorkerView(View):
 
 class GymView(TemplateView):
     template_name = 'gym.html'
+
 
 class LockerRoomView(TemplateView):
     template_name = 'locker_room.html'

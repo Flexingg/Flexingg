@@ -15,6 +15,9 @@ urlpatterns = [
     path('connect-liftosaur/', LiftosaurConnectView.as_view(), name='connect_liftosaur'),
     path('disconnect-liftosaur/', LiftosaurDisconnectView.as_view(), name='disconnect_liftosaur'),
     
+    # PWA analytics endpoint
+    path('api/pwa/event/', PWAEventView.as_view(), name='pwa_event'),
+    
     # Placeholders
     path('comingsoon/', ComingSoonView.as_view(), name='comingsoon'),
     path('offline/', OfflineView.as_view(), name='offline'),

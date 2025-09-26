@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flexin.gg — Offline</title>
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/static/app/icons/icon-192.png" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, sans-serif; margin:0; background:#121212; color:#E0E0E0; display:flex; align-items:center; justify-content:center; height:100vh; }
+    .card { max-width:640px; padding:2rem; border:2px solid #222; background:#1b1b1b; text-align:center; border-radius:8px; box-shadow: 0 6px 24px rgba(0,0,0,.6); }
+    h1 { font-size:1.25rem; margin:0 0 .5rem; font-weight:700; }
+    p { color:#bdbdbd; margin: .5rem 0 1rem; }
+    .links { display:flex; gap:.5rem; justify-content:center; flex-wrap:wrap; }
+    a.button { display:inline-block; padding:.5rem .9rem; background:#00f5d4; color:#000; font-weight:600; text-decoration:none; border-radius:6px; }
+    a.ghost { background:transparent; border:1px solid #333; color:#E0E0E0; padding:.4rem .8rem; border-radius:6px; text-decoration:none; }
+    .muted { font-size:.85rem; color:#8a8a8a; margin-top:1rem; }
+  </style>
+</head>
+<body>
+  <main class="card" role="main" aria-labelledby="offline-title">
+    <h1 id="offline-title">You're offline</h1>
+    <p>Flexin.gg can't reach the network right now. You can still view cached pages and your last synced data.</p>
+
+    <div class="links" aria-hidden="false">
+      <a class="button" href="/">Home</a>
+      <a class="ghost" href="/gym">Gym</a>
+      <a class="ghost" href="/leaderboard">Leaderboards</a>
+      <a class="ghost" href="/profile">Profile</a>
+    </div>
+
+    <div class="muted">
+      <div id="status">Trying to reconnect...</div>
+      <button id="reload" class="ghost" style="margin-top:.7rem;">Retry Connection</button>
+    </div>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const reloadBtn = document.getElementById('reload');
+
+    function updateOnlineStatus() {
+      if (navigator.onLine) {
+        statusEl.textContent = 'You are back online — reloading...';
+        setTimeout(() => location.reload(true), 500);
+      } else {
+        statusEl.textContent = 'Still offline. Some features may be unavailable.';
+      }
+    }
+
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    reloadBtn.addEventListener('click', () => {
+      statusEl.textContent = 'Checking connection...';
+      setTimeout(updateOnlineStatus, 300);
+    });
+
+    // Initial check
+    updateOnlineStatus();
+  </script>
+</body>
+</html>
