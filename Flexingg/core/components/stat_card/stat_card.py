@@ -1,5 +1,6 @@
 from django_components import component
 from django.utils import timezone
+from datetime import date as _date
 from core.models import Workout, BodyWeight
 
 @component.register("stat_card")
@@ -17,6 +18,12 @@ class StatCard(component.Component):
         else:
             user = kwargs.get('user') or getattr(kwargs.get('request'), 'user', None)
             target_date = kwargs.get('date') or timezone.now().date()
+            # Accept ISO string dates (YYYY-MM-DD) passed from templates/js and convert to date
+            if isinstance(target_date, str):
+                try:
+                    target_date = _date.fromisoformat(target_date)
+                except Exception:
+                    target_date = timezone.now().date()
             vol_k = 0.0
             if user and hasattr(user, 'is_authenticated') and user.is_authenticated:
                 try:
@@ -40,6 +47,11 @@ class StatCard(component.Component):
         try:
             user = kwargs.get('user') or getattr(kwargs.get('request'), 'user', None)
             target_date = kwargs.get('date') or timezone.now().date()
+            if isinstance(target_date, str):
+                try:
+                    target_date = _date.fromisoformat(target_date)
+                except Exception:
+                    target_date = timezone.now().date()
             todays_bodyweight = None
             if user and hasattr(user, 'is_authenticated') and user.is_authenticated:
                 bw_qs = BodyWeight.objects.filter(user=user, datetime__date=target_date).order_by('-datetime')

@@ -124,7 +124,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('volume-value').textContent = formatNumber(data.volume_k, 'volume_k');
         document.getElementById('consumed-value').textContent = formatNumber(data.consumed, 'consumed');
         document.getElementById('water-value').textContent = formatNumber(data.water_ounces, 'water_ounces');
-        document.getElementById('bodyweight-value').textContent = formatNumber(data.bodyweight_lbs, 'bodyweight_lbs');
+        // Only overwrite the server-rendered bodyweight display if the API returns a non-null value.
+        if (data.bodyweight_lbs !== null && data.bodyweight_lbs !== undefined) {
+            document.getElementById('bodyweight-value').textContent = formatNumber(data.bodyweight_lbs, 'bodyweight_lbs');
+        }
 
         if (logHeader) {
             logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -270,8 +273,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 modalFormContainer.innerHTML = `
                     <form id="water-entry-form" class="space-y-2">
                         <div class="flex items-center space-x-2">
-                            <input type="date" name="date" value="${currentDate}" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm">
-                            <input type="number" step="0.1" name="amount_ounces" placeholder="Ounces" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" />
+                            <input type="date" name="date" value="${currentDate}" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;">
+                            <input type="number" step="0.1" name="amount_ounces" placeholder="Ounces" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;" />
                             <button type="submit" class="pixel-button px-3 py-1">Save Water</button>
                         </div>
                         <div id="water-entry-status" class="text-sm text-gray-300"></div>
@@ -306,8 +309,9 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (statKey === 'bodyweight') {
                 modalFormContainer.innerHTML = `
                     <form id="bw-entry-form" method="post" action="{% url 'fitness:bodyweight_submit' %}" class="space-y-2">
+                        {% csrf_token %}
                         <div class="flex items-center space-x-2">
-                            <input type="number" step="0.1" name="bodyweight_lbs" placeholder="lbs" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" />
+                            <input type="number" step="0.1" name="bodyweight_lbs" placeholder="lbs" class="font-pixel pixel-border bg-[#2a2a2a] text-white px-2 py-1 text-sm" style="background-color: #2a2a2a !important; color: white !important; border-color: #444 !important;" />
                             <button type="submit" class="pixel-button px-3 py-1">Save Weight</button>
                         </div>
                     </form>
