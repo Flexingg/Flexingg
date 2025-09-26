@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
             datePicker.max = today;
             datePicker.value = today;
             updateDisplay(data);
+            await fetchStats(today);
         } catch (error) {
             console.error('Init stats error:', error);
             // Fallback to server-side values
@@ -118,21 +119,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateDisplay(data) {
-        // Update dynamic cards based on their IDs
-        document.getElementById('calories-value').textContent = formatNumber(data.calories, 'calories');
-        document.getElementById('steps-value').textContent = formatNumber(data.steps, 'steps');
-        document.getElementById('volume-value').textContent = formatNumber(data.volume_k, 'volume_k');
-        document.getElementById('consumed-value').textContent = formatNumber(data.consumed, 'consumed');
-        document.getElementById('water-value').textContent = formatNumber(data.water_ounces, 'water_ounces');
+        // Update dynamic cards based on their IDs, but only overwrite if the API returned a non-null/undefined value.
+        if (data.calories !== null && data.calories !== undefined) {
+            const el = document.getElementById('calories-value');
+            if (el) el.textContent = formatNumber(data.calories, 'calories');
+        }
+        if (data.steps !== null && data.steps !== undefined) {
+            const el = document.getElementById('steps-value');
+            if (el) el.textContent = formatNumber(data.steps, 'steps');
+        }
+        if (data.volume_k !== null && data.volume_k !== undefined && Number(data.volume_k) > 0) {
+            const el = document.getElementById('volume-value');
+            if (el) el.textContent = formatNumber(data.volume_k, 'volume_k');
+        }
+        if (data.consumed !== null && data.consumed !== undefined) {
+            const el = document.getElementById('consumed-value');
+            if (el) el.textContent = formatNumber(data.consumed, 'consumed');
+        }
+        if (data.water_ounces !== null && data.water_ounces !== undefined) {
+            const el = document.getElementById('water-value');
+            if (el) el.textContent = formatNumber(data.water_ounces, 'water_ounces');
+        }
         // Only overwrite the server-rendered bodyweight display if the API returns a non-null value.
         if (data.bodyweight_lbs !== null && data.bodyweight_lbs !== undefined) {
-            document.getElementById('bodyweight-value').textContent = formatNumber(data.bodyweight_lbs, 'bodyweight_lbs');
+            const el = document.getElementById('bodyweight-value');
+            if (el) el.textContent = formatNumber(data.bodyweight_lbs, 'bodyweight_lbs');
         }
 
-        if (logHeader) {
+        if (logHeader && data.date) {
             logHeader.textContent = new Date(data.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         }
-        currentDate = data.date;
+        currentDate = data.date || currentDate;
     }
 
     async function fetchStats(date) {
@@ -242,14 +259,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // List
             modalListContainer.innerHTML = '';
-            if (payload.list && Array.isArray(payload.list) && payload.list.length) {
-                payload.list.forEach(item => {
+            // defensive copy of list
+            let listItems = Array.isArray(payload.list) ? payload.list.slice() : [];
+            // Filter out empty/NA/zero entries for specific stat types
+            if (statKey === 'lifting_volume') {
+                listItems = listItems.filter(item => {
+                    // Accept several possible field names, prefer total_volume_lbs
+                    const vol = (item.total_volume_lbs ?? item.total_volume ?? item.total_volume_lbs_raw ?? null);
+                    return vol !== null && vol !== undefined && !isNaN(Number(vol)) && Number(vol) > 0;
+                });
+            } else if (statKey === 'cardio_burned') {
+                listItems = listItems.filter(item => item.calories !== null && item.calories !== undefined && !isNaN(Number(item.calories)) && Number(item.calories) > 0);
+            }
+
+            if (listItems && Array.isArray(listItems) && listItems.length) {
+                listItems.forEach(item => {
                     const el = document.createElement('div');
                     el.className = 'pixel-border bg-[#1a1a1a] p-3';
                     // Simple representation; front-end can expand per type
                     if (item.type === 'workout' || item.type === 'lift') {
-                        el.innerHTML = `<div class="flex justify-between"><div class="font-pixel text-sm text-white">${item.source || item.type}</div><div class="font-pixel text-xs text-gray-400">${new Date(item.start_time || item.date || item.datetime).toLocaleString()}</div></div>
-                                        <div class="mt-1 text-gray-300 text-sm">Calories: ${item.calories || item.total_volume_lbs || 'N/A'} ${item.total_volume_lbs ? 'lbs' : ''}</div>`;
+                        // Prefer showing volume for lift/workout entries; fall back to calories if no volume
+                        const vol = (item.total_volume_lbs ?? item.total_volume ?? null);
+                        const time = new Date(item.start_time || item.date || item.datetime).toLocaleString();
+                        const source = item.source || item.type;
+                        const metricLine = vol !== null && vol !== undefined && !isNaN(Number(vol)) && Number(vol) > 0
+                            ? `Volume (lbs): ${Number(vol)} lbs`
+                            : (item.calories ? `Calories: ${item.calories}` : 'N/A');
+                        el.innerHTML = `<div class="flex justify-between"><div class="font-pixel text-sm text-white">${source}</div><div class="font-pixel text-xs text-gray-400">${time}</div></div>
+                                        <div class="mt-1 text-gray-300 text-sm">${metricLine}</div>`;
                     } else if (item.type === 'nutrition') {
                         el.innerHTML = `<div class="font-pixel text-sm text-white">${item.food_name}</div><div class="text-xs text-gray-400">${new Date(item.datetime).toLocaleString()}</div><div class="mt-1 text-gray-300 text-sm">Calories: ${item.calories}</div>`;
                     } else if (item.type === 'water') {

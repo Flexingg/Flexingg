@@ -285,7 +285,7 @@ class HomeView(TemplateView):
                     'unit': 'cal',
                     'duration': None,
                     'xp': 0,  # Nutrition doesn't give XP in this system
-                    'sort_date': nutrition.datetime if nutrition.datetime.tzinfo else timezone.make_aware(nutrition.datetime),
+                    'sort_date': nutrition.datetime if hasattr(nutrition, 'datetime') else nutrition.datetime,
                     'details': details
                 })
             # Sort by date descending
@@ -332,13 +332,15 @@ class StatsAPIView(LoginRequiredMixin, View):
 
         # Lifting volume
         # Calculate lifting volume robustly (sum of lbs -> convert to thousands)
-        total_volume = 0.0
+        total_volume_k = 0.0
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            vol_lbs = _workout_volume_lbs(workout)
-            vol_k = vol_lbs / 1000.0
-            print(workout.id, vol_k)
-            total_volume += vol_k
+            try:
+                vol_lbs = _workout_volume_lbs(workout)
+                total_volume_k += (vol_lbs / 1000.0)
+            except Exception:
+                # ignore per-workout errors
+                pass
 
         # Water intake
         water_ounces = DailyWater.objects.filter(
@@ -347,7 +349,7 @@ class StatsAPIView(LoginRequiredMixin, View):
         ).aggregate(total=Sum('amount_ounces'))['total'] or 0
 
         # Lift volume
-        # Calculate lifting volume robustly in lbs
+        # Calculate lifting volume robustly in lbs (diagnostics only — do not overwrite total_volume)
         total_volume = 0
         print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
@@ -361,33 +363,17 @@ class StatsAPIView(LoginRequiredMixin, View):
             'date': target_date.isoformat(),
             'calories': int(calories),
             'steps': int(steps),
-            'volume_k': total_volume,
+            'volume_k': total_volume_k,
             'consumed': consumed,
             'water_ounces': float(water_ounces),
         }
 
         if get_earliest:
-            earliest_candidates = []
-            # Steps earliest
-            steps_min = DailySteps.objects.filter(user=profile).aggregate(min_date=Min('date'))['min_date']
-            if steps_min:
-                earliest_candidates.append(steps_min)
-            # Workouts earliest
-            workout_min = Workout.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
-            if workout_min:
-                earliest_candidates.append(workout_min)
-            # Sleep earliest
-            sleep_min = Sleep.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
-            if sleep_min:
-                earliest_candidates.append(sleep_min)
-
-            if earliest_candidates:
-                earliest_date = min(earliest_candidates)
-                response_data['earliest_date'] = earliest_date.isoformat()
-            else:
-                response_data['earliest_date'] = today.isoformat()  # No data, use today
-
-        return JsonResponse(response_data)
+            # Not using this feature right now — built into the API client request handling.
+            # Keeping HERE just in case a future client needs it for stat cards
+            raise NotImplementedError("Getting earliest dates in API response is not implemented")
+        else:
+            return JsonResponse(response_data)
 
 
 # --- Detail API for stat cards (Graph points + optional list) ---
@@ -705,13 +691,16 @@ class StatsAPIView(LoginRequiredMixin, View):
 
         # Lifting volume
         # Calculate lifting volume robustly (sum of lbs -> convert to thousands)
-        total_volume = 0.0
+        # Compute total_volume_k on the server instead of reading from cookies
+        total_volume_k = 0.0
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            vol_lbs = _workout_volume_lbs(workout)
-            vol_k = vol_lbs / 1000.0
-            print(workout.id, vol_k)
-            total_volume += vol_k
+            try:
+                vol_lbs = _workout_volume_lbs(workout)
+                total_volume_k += (vol_lbs / 1000.0)
+            except Exception:
+                # ignore per-workout errors
+                continue
 
         # Water intake
         water_ounces = DailyWater.objects.filter(
@@ -720,12 +709,16 @@ class StatsAPIView(LoginRequiredMixin, View):
         ).aggregate(total=Sum('amount_ounces'))['total'] or 0
 
         # Lift volume
-        # Calculate lifting volume robustly in lbs
+        # Calculate lifting volume robustly in lbs (diagnostics only — do not overwrite total_volume)
         total_volume = 0
         print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
-            print(workout.id, _workout_volume_lbs(workout) / 1000.0)
+            vol_lbs = _workout_volume_lbs(workout)
+            # volume_k is thousands of lbs
+            vol_k = vol_lbs / 1000.0
+            print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
+            total_volume += vol_lbs
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
@@ -734,7 +727,7 @@ class StatsAPIView(LoginRequiredMixin, View):
             'date': target_date.isoformat(),
             'calories': int(calories),
             'steps': int(steps),
-            'volume_k': total_volume,
+            'volume_k': total_volume_k,
             'consumed': consumed,
             'water_ounces': float(water_ounces),
         }
@@ -772,10 +765,11 @@ from .models import *  # JWT, Notification, Relationship
 from healthconnect.utils import get_daily_consumed_calories
 from healthconnect.sync_tasks import healthconnect_sync_task
 from django.contrib.staticfiles.finders import find
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 User = get_user_model()
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum, FloatField
 from django.db.models.functions import Cast
@@ -845,7 +839,7 @@ class StatDetailAPIView(LoginRequiredMixin, View):
                     try:
                         total_lbs += _workout_volume_lbs(w)
                     except Exception:
-                        pass
+                        continue
                 value = total_lbs / 1000.0
             elif stat_key == 'steps':
                 steps = DailySteps.objects.filter(user=user, date=d).aggregate(total=Sum('steps'))['total'] or 0
