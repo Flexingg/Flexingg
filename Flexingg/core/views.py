@@ -1718,3 +1718,30 @@ class LockerRoomView(TemplateView):
 
 class ShopView(TemplateView):
     template_name = 'shop.html'
+
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def submit_integration_idea(request):
+    """
+    Accepts a simple POST from the integrations_section component and saves
+    a short idea to the IntegrationIdea model. Redirects back to settings.
+    """
+    if request.method != 'POST':
+        return redirect('fitness:settings')
+    idea = request.POST.get('integration_idea') or request.POST.get('idea_text')
+    if not idea:
+        messages.error(request, "Please enter an integration suggestion.")
+        return redirect('fitness:settings')
+    try:
+        # Truncate to 500 chars to match model constraint and capture minimal metadata
+        IntegrationIdea.objects.create(
+            user=request.user,
+            idea_text=str(idea)[:500],
+            metadata={'user_agent': request.META.get('HTTP_USER_AGENT')}
+        )
+        messages.success(request, "Thanks — your integration idea was submitted!")
+    except Exception as e:
+        logger.exception("Failed to save IntegrationIdea: %s", e)
+        messages.error(request, "Failed to save your idea. Please try again.")
+    return redirect('fitness:settings')

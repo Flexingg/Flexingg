@@ -193,6 +193,19 @@
 </div>
 {% endif %}
 
+{# Integration idea submission - simple themed input for users to suggest apps/devices #}
+{% if request.user.is_authenticated %}
+<div class="pixel-border bg-[#2a2a2a] mt-3 p-4 space-y-3">
+    <h4 class="font-pixel text-sm text-white">Suggest an Integration</h4>
+    <p class="font-pixel text-xs text-gray-300 mb-2">Have an app or device you'd like supported? Submit a short suggestion and I'll review it.</p>
+    <form method="post" action="{% url 'fitness:submit_integration_idea' %}" class="flex space-x-2">
+        {% csrf_token %}
+        <input type="text" name="integration_idea" required maxlength="500" class="pixel-input w-full" placeholder="e.g. 'Fitbit', 'Whoop', or 'Oura'"/>
+        <button type="submit" class="pixel-button px-3 py-2 font-pixel text-xs text-cyan-300">Submit</button>
+    </form>
+</div>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Inline DOM loaded for integrations');
@@ -277,14 +290,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     }, 1000);
                 } else {
                     alert('Garmin sync failed. Please try again.');
-    // Handle Health Connect sync with AJAX to avoid page refresh
-    const hcSyncForm = document.querySelector('form[action*="fitness/sync_data_view/"]:nth-of-type(2)');
-    if (hcSyncForm) {
-        hcSyncForm.addEventListener('submit', function(e) {
+                }
+            })
+            .catch(error => {
+                console.error('Garmin sync error:', error);
+                alert('Garmin sync error occurred.');
+            });
+        });
+    } else {
+        console.log('Garmin sync form not found');
+    }
+
+    // Handle Health Connect sync with AJAX to avoid page refresh (fitness sync form - second occurrence)
+    const hcSyncFormFitness = document.querySelector('form[action*="fitness/sync_data_view/"]:nth-of-type(2)');
+    if (hcSyncFormFitness) {
+        hcSyncFormFitness.addEventListener('submit', function(e) {
             e.preventDefault();
-            console.log('Health Connect sync form submitted via AJAX');
-            const formData = new FormData(hcSyncForm);
-            fetch(hcSyncForm.action, {
+            console.log('Health Connect sync form (fitness endpoint) submitted via AJAX');
+            const formData = new FormData(hcSyncFormFitness);
+            fetch(hcSyncFormFitness.action, {
                 method: 'POST',
                 body: formData,
                 headers: {
@@ -292,7 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .then(response => {
-                console.log('Health Connect sync response status:', response.status);
+                console.log('Health Connect (fitness) sync response status:', response.status);
                 if (response.ok) {
                     alert('Health Connect sync started! Your data will appear on your dashboard shortly.');
                     // Optionally reload the page after a short delay to show updated data
@@ -304,22 +328,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(error => {
-                console.error('Health Connect sync error:', error);
+                console.error('Health Connect sync error (fitness):', error);
                 alert('Health Connect sync error occurred.');
             });
         });
     } else {
-        console.log('Health Connect sync form not found');
-    }
-                }
-            })
-            .catch(error => {
-                console.error('Garmin sync error:', error);
-                alert('Garmin sync error occurred.');
-            });
-        });
-    } else {
-        console.log('Garmin sync form not found');
+        console.log('Health Connect sync form (fitness) not found');
     }
 
     // Handle Liftosaur import with AJAX to avoid page refresh
@@ -507,14 +521,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Handle HC sync with AJAX
-    const hcSyncForm = document.querySelector('form[action*="healthconnect/sync/"]');
-    if (hcSyncForm) {
-        hcSyncForm.addEventListener('submit', function(e) {
+    // Handle HC sync with AJAX (healthconnect endpoint)
+    const hcSyncFormHealth = document.querySelector('form[action*="healthconnect/sync/"]');
+    if (hcSyncFormHealth) {
+        hcSyncFormHealth.addEventListener('submit', function(e) {
             e.preventDefault();
-            console.log('HC sync form submitted via AJAX');
-            const formData = new FormData(hcSyncForm);
-            fetch(hcSyncForm.action, {
+            console.log('HC sync form (healthconnect endpoint) submitted via AJAX');
+            const formData = new FormData(hcSyncFormHealth);
+            fetch(hcSyncFormHealth.action, {
                 method: 'POST',
                 body: formData,
                 headers: {
@@ -523,7 +537,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.json())
             .then(data => {
-                console.log('HC sync response:', data);
+                console.log('HC sync response (healthconnect):', data);
                 if (data.success) {
                     alert('Sync successful! Saved ' + data.saved + ' records.');
                 } else {
@@ -531,7 +545,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             })
             .catch(error => {
-                console.error('HC sync error:', error);
+                console.error('HC sync error (healthconnect):', error);
                 alert('Sync error occurred.');
             });
         });

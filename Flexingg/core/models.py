@@ -462,7 +462,7 @@ class Workout(models.Model):
 
     def __str__(self):
         return f"Workout for {self.user.username} from {self.source} on {self.start_time.date()}"
-    
+
     def get_total_volume(self, unit='lb'):
         """
         Robustly compute total lifting volume for this workout.
@@ -743,3 +743,24 @@ class Level(models.Model):
 
     def __str__(self):
         return f"Level {self.level_number} ({self.xp_required} XP)"
+
+
+class IntegrationIdea(models.Model):
+    """
+    Stores user-submitted ideas for future integrations (apps/devices).
+    The owner will review entries directly from the database.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='integration_ideas', null=True, blank=True, help_text='User who submitted the idea (nullable for anonymous suggestions)')
+    idea_text = models.CharField(max_length=500, help_text='Short description of the integration idea')
+    created_at = models.DateTimeField(auto_now_add=True)
+    metadata = models.JSONField(blank=True, null=True, help_text='Optional metadata (e.g., user agent, source)')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Integration Idea"
+        verbose_name_plural = "Integration Ideas"
+
+    def __str__(self):
+        owner = self.user.username if self.user else "anonymous"
+        return f"Idea by {owner} at {self.created_at.isoformat()}: {self.idea_text[:60]}"

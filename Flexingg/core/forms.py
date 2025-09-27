@@ -4,7 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import get_user_model
 from django.forms import modelformset_factory
 
-from .models import DataPriority
+from .models import DataPriority, IntegrationIdea
 
 User = get_user_model()
 
@@ -50,6 +50,7 @@ class LoginForm(AuthenticationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['username'].label = 'Gamertag'
+
 
 class ProfileForm(forms.ModelForm):
     class Meta:
@@ -134,6 +135,18 @@ class SignUpForm(UserCreationForm):
                 'class': 'pixel-input',
                 'placeholder': 'Choose your gamer tag',
                 'style': 'background-color: #1c1c1c !important; border: 2px solid #444 !important; box-shadow: inset -2px -2px 0px 0px #000, inset 2px 2px 0px 0px #555 !important; font-family: "Press Start 2P", cursive !important; color: #E0E0E0 !important; padding: 0.5rem !important; width: 100% !important; font-size: 12px !important; outline: none !important; -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;'
+            })
+        }
+
+class IntegrationIdeaForm(forms.ModelForm):
+    class Meta:
+        model = IntegrationIdea
+        fields = ['idea_text']
+        widgets = {
+            'idea_text': forms.TextInput(attrs={
+                'class': 'pixel-input w-full',
+                'placeholder': 'Suggest an app or device to integrate (e.g. "Fitbit", "Whoop", "Oura")',
+                'maxlength': '500'
             })
         }
 

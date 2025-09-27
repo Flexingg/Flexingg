@@ -12,6 +12,7 @@ urlpatterns = [
     path('settings/', SettingsView.as_view(), name='settings'),
     path('data-priorities/', DataPriorityView.as_view(), name='data_priorities'),
     path('sync-data/', sync_data_view, name='sync_data_view'),
+    path('submit-integration-idea/', submit_integration_idea, name='submit_integration_idea'),
     path('bodyweight/submit/', bodyweight_submit, name='bodyweight_submit'),
     path('connect-liftosaur/', LiftosaurConnectView.as_view(), name='connect_liftosaur'),
     path('disconnect-liftosaur/', LiftosaurDisconnectView.as_view(), name='disconnect_liftosaur'),
