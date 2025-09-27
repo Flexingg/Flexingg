@@ -50,14 +50,12 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     "django_components",
     "pwa",
-    "whitenoise.runserver_nostatic",
     "django_celery_results",
     "django_celery_beat",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -65,6 +63,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+if DEBUG:
+    INSTALLED_APPS.insert(13,"whitenoise.runserver_nostatic")
+    MIDDLEWARE.insert(2, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 ROOT_URLCONF = "Flexingg.urls"
 
@@ -153,6 +155,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
 AWS_CUSTOM_DOMAIN = os.getenv('AWS_CUSTOM_DOMAIN')
+AWS_S3_CUSTOM_DOMAIN = AWS_CUSTOM_DOMAIN
 AWS_S3_OBJECT_PARAMETERS = {
     'CacheControl': 'max-age=86400',
 }
@@ -209,6 +212,7 @@ STORAGES = {
             'bucket_name': AWS_STORAGE_BUCKET_NAME,
             'default_acl': 'public-read',
             'endpoint_url': AWS_S3_ENDPOINT_URL,
+            'custom_domain': AWS_CUSTOM_DOMAIN,
             'signature_version': 's3v4',
             'location': 'static',
             'addressing_style': 'path',  # Added for R2
