@@ -545,12 +545,12 @@ def cumulative_data_api(request):
     if category == 'steps':
         from garminconnect.models import GarminDailySteps
         qs = GarminDailySteps.objects.filter(user_id__in=user_ids, date__gte=start_date, date__lte=end_date)
-        for row in qs.values('user_id').annotate(total=Coalesce(Sum('steps'), 0)):
+        for row in qs.values('user_id').annotate(total=Coalesce(Sum('steps'), Value(0), output_field=IntegerField())):
             totals_map[row['user_id']] = row['total'] or 0
     elif category == 'calories':
         from garminconnect.models import GarminActivity
         qs = GarminActivity.objects.filter(user_id__in=user_ids, start_time_utc__date__gte=start_date, start_time_utc__date__lte=end_date)
-        for row in qs.values('user_id').annotate(total=Coalesce(Sum('calories'), 0)):
+        for row in qs.values('user_id').annotate(total=Coalesce(Sum('calories'), Value(0), output_field=FloatField())):
             totals_map[row['user_id']] = row['total'] or 0
     elif category == 'lifts':
         # Aggregate from both liftosaur.Workout (uses `timestamp`) and core.models.Workout (uses `start_time`)
@@ -580,19 +580,19 @@ def cumulative_data_api(request):
                 continue
     elif category == 'coins':
         total_qs = Transaction.objects.filter(user_id__in=user_ids, currency_type='cardio_coins', created_at__date__gte=start_date, created_at__date__lte=end_date)
-        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), 0)):
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), Value(0), output_field=FloatField())):
             totals_map[row['user_id']] = float(row['total'] or 0)
     elif category == 'gems':
         total_qs = Transaction.objects.filter(user_id__in=user_ids, currency_type='gym_gems', created_at__date__gte=start_date, created_at__date__lte=end_date)
-        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), 0)):
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), Value(0), output_field=FloatField())):
             totals_map[row['user_id']] = float(row['total'] or 0)
     elif category == 'consumed':
         total_qs = NutritionEntry.objects.filter(user_id__in=user_ids, datetime__date__gte=start_date, datetime__date__lte=end_date)
-        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('calories'), 0)):
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('calories'), Value(0), output_field=FloatField())):
             totals_map[row['user_id']] = float(row['total'] or 0)
     elif category == 'water':
         total_qs = DailyWater.objects.filter(user_id__in=user_ids, date__gte=start_date, date__lte=end_date)
-        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount_ounces'), 0)):
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount_ounces'), Value(0), output_field=FloatField())):
             totals_map[row['user_id']] = float(row['total'] or 0)
     elif category == 'sleep':
         # aggregate total sleep hours per user by scanning Sleep rows in batch
@@ -602,17 +602,10 @@ def cumulative_data_api(request):
                 secs = (s.end_time - s.start_time).total_seconds()
                 totals_map.setdefault(s.user_id, 0)
                 totals_map[s.user_id] += secs / 3600.0
+            else:
+                pass
     else:
-        # fallback, try to annotate with provided info if available
-        try:
-            # attempt to use available_metrics mapping if present earlier in file
-            info_field = info.get('field')
-            if info_field is not None:
-                annotated_totals = users_qs.filter(id__in=user_ids).values('id').annotate(total=Coalesce(info_field, 0))
-                for row in annotated_totals:
-                    totals_map[row['id']] = float(row.get('total') or 0)
-        except Exception:
-            pass
+        pass
 
     # Ensure every user has an entry (default 0)
     for uid in user_ids:
@@ -648,12 +641,12 @@ def cumulative_data_api(request):
     if category in ('steps',):
         from garminconnect.models import GarminDailySteps
         qs = GarminDailySteps.objects.filter(user_id__in=top_user_ids, date__gte=start_date, date__lte=end_date)
-        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('steps'), 0)):
+        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('steps'), Value(0), output_field=IntegerField())):
             per_user_date_map[(row['user_id'], row['date'].isoformat())] = row['total'] or 0
     elif category in ('calories',):
         from garminconnect.models import GarminActivity
         qs = GarminActivity.objects.filter(user_id__in=top_user_ids, start_time_utc__date__gte=start_date, start_time_utc__date__lte=end_date)
-        for row in qs.values('user_id', start_date_field:= 'start_time_utc__date').annotate(total=Coalesce(Sum('calories'), 0)):
+        for row in qs.values('user_id', start_date_field:= 'start_time_utc__date').annotate(total=Coalesce(Sum('calories'), Value(0), output_field=FloatField())):
             # values() with dynamic field name returns key like start_time_utc__date
             d = row.get(start_date_field) or row.get('start_time_utc__date')
             if d:
@@ -661,19 +654,20 @@ def cumulative_data_api(request):
     elif category in ('coins', 'gems'):
         tx_filter = {'currency_type': 'cardio_coins' if category == 'coins' else 'gym_gems'}
         qs = Transaction.objects.filter(user_id__in=top_user_ids, created_at__date__gte=start_date, created_at__date__lte=end_date, **tx_filter)
-        for row in qs.values('user_id', 'created_at__date').annotate(total=Coalesce(Sum('amount'), 0)):
+        # use created_at__date key and sum the amount field
+        for row in qs.values('user_id', 'created_at__date').annotate(total=Coalesce(Sum('amount'), Value(0), output_field=FloatField())):
             d = row.get('created_at__date')
             if d:
-                per_user_date_map[(row['user_id'], d.isoformat())] = float(row['total'] or 0)
+                per_user_date_map[(row['user_id'], d.isoformat())] = row['total'] or 0
     elif category in ('consumed',):
         qs = NutritionEntry.objects.filter(user_id__in=top_user_ids, datetime__date__gte=start_date, datetime__date__lte=end_date)
-        for row in qs.values('user_id', 'datetime__date').annotate(total=Coalesce(Sum('calories'), 0)):
+        for row in qs.values('user_id', 'datetime__date').annotate(total=Coalesce(Sum('calories'), Value(0), output_field=FloatField())):
             d = row.get('datetime__date')
             if d:
                 per_user_date_map[(row['user_id'], d.isoformat())] = float(row['total'] or 0)
     elif category in ('water',):
         qs = DailyWater.objects.filter(user_id__in=top_user_ids, date__gte=start_date, date__lte=end_date)
-        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('amount_ounces'), 0)):
+        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('amount_ounces'), Value(0), output_field=FloatField())):
             per_user_date_map[(row['user_id'], row['date'].isoformat())] = float(row['total'] or 0)
     elif category in ('sleep',):
         qs = Sleep.objects.filter(user_id__in=top_user_ids, start_time__date__gte=start_date, start_time__date__lte=end_date)
