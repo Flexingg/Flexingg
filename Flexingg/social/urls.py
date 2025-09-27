@@ -17,4 +17,5 @@ urlpatterns = [
     path('groups/<int:group_id>/', group_detail, name='group_detail'),
     path('groups/<int:group_id>/join/', join_group, name='join_group'),
     path('groups/<int:group_id>/leave/', leave_group, name='leave_group'),
+    path('api/cumulative-data/', cumulative_data_api, name='cumulative_data_api'),
 ]

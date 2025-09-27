@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
 <style>
 /* Custom Styles for Pixelated/Retro Look */
 /* Reusable pixelated box style */
@@ -315,6 +316,23 @@
         <button class="pixel-button w-full bg-red-700 mt-4 font-pixel" data-action="close">Close</button>
     </div>
 </div>
+
+<!-- Cumulative Graph Component (added per Docs/plan.md) -->
+<section id="cumulative-graph-wrapper" class="mt-6">
+    <div class="pixel-border bg-[#2a2a2a] p-4">
+        <h4 class="font-pixel text-md text-center text-blue-400 mb-3">Progression</h4>
+        <div class="relative">
+            <div id="cumulative-loading" class="absolute inset-0 z-10 flex items-center justify-center bg-black/50 hidden">
+                 <div class="pixel-button p-3">Loading...</div>
+             </div>
+            <div style="height:260px; min-height:160px;">
+                <canvas id="cumulative-chart" height="200" style="display:block; width:100%; height:200px;"></canvas>
+            </div>
+            <div id="cumulative-legend" class="mt-3 grid grid-cols-2 gap-2"></div>
+            <div id="cumulative-error" class="mt-2 font-pixel text-sm text-red-400 hidden"></div>
+        </div>
+    </div>
+</section>
 <!-- Name Modal (opened on mobile tap) -->
 <div id="name-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden" aria-hidden="true">
     <div class="pixel-box p-6 w-full max-w-xs space-y-4 text-center">
@@ -470,6 +488,233 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', updateNavVisibility);
     // Run once on load
     updateNavVisibility();
+});
+</script>
+
+<!-- Cumulative Graph JS (implements plan: fetch, render, legend, loading) -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const CHART_CANVAS_ID = 'cumulative-chart';
+    const LOADING_ID = 'cumulative-loading';
+    const LEGEND_ID = 'cumulative-legend';
+    const ERROR_ID = 'cumulative-error';
+    let cumulativeChart = null;
+
+    const RANK_COLORS = {
+        1: '#ffd700',
+        2: '#c0c0c0',
+        3: '#cd7f32',
+        4: '#4a90e2',
+        5: '#7ed321',
+        6: '#9b59b6',
+        7: '#e67e22',
+        8: '#e74c3c',
+        9: '#16a085',
+        10: '#34495e'
+    };
+
+    function showLoading() {
+        const el = document.getElementById(LOADING_ID);
+        if (el) el.classList.remove('hidden');
+    }
+    function hideLoading() {
+        const el = document.getElementById(LOADING_ID);
+        if (el) el.classList.add('hidden');
+    }
+    function showError(msg) {
+        const el = document.getElementById(ERROR_ID);
+        if (!el) return;
+        el.textContent = msg || 'Failed to load graph data';
+        el.classList.remove('hidden');
+    }
+    function clearError() {
+        const el = document.getElementById(ERROR_ID);
+        if (!el) return;
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+
+    function getQueryParams() {
+        const params = new URLSearchParams(window.location.search);
+        return {
+            category: params.get('category') || 'steps',
+            history: params.get('history') || 'All Time',
+            scope: params.get('scope') || 'Global'
+        };
+    }
+
+    async function fetchCumulativeData() {
+        const { category, history, scope } = getQueryParams();
+        const url = `/social/api/cumulative-data/?category=${encodeURIComponent(category)}&history=${encodeURIComponent(history)}&scope=${encodeURIComponent(scope)}`;
+        showLoading();
+        clearError();
+        try {
+            const resp = await fetch(url, { credentials: 'same-origin' });
+            if (!resp.ok) {
+                throw new Error(`Server returned ${resp.status}`);
+            }
+            const json = await resp.json();
+            hideLoading();
+            return json;
+        } catch (err) {
+            hideLoading();
+            console.error('Failed to fetch cumulative data', err);
+            showError('Unable to load progression data. Try again later.');
+            return null;
+        }
+    }
+
+    function formatChartData(apiResponse) {
+        if (!apiResponse || !apiResponse.users) return null;
+        // use the date list from response.date_range or first user's data_points
+        const labels = [];
+        // Build a unique ordered list of dates from response (safer)
+        const dateSet = new Set();
+        apiResponse.users.forEach(u => {
+            (u.data_points || []).forEach(dp => dateSet.add(dp.date));
+        });
+        const sortedDates = Array.from(dateSet).sort();
+        // If empty, fallback to date_range build
+        if (sortedDates.length === 0 && apiResponse.date_range) {
+            // tentative daily labels between start and end
+            const start = new Date(apiResponse.date_range.start);
+            const end = new Date(apiResponse.date_range.end);
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                sortedDates.push(d.toISOString().slice(0,10));
+            }
+        }
+        const labelsFinal = sortedDates;
+
+        const datasets = (apiResponse.users || []).map(u => {
+            // Build a date -> daily value map preferring dp.value (per-period)
+            const dayMap = {};
+            (u.data_points || []).forEach(dp => {
+                const rawVal = (typeof dp.value !== 'undefined') ? dp.value : (typeof dp.cumulative_value !== 'undefined' ? dp.cumulative_value : 0);
+                // coerce to numeric (fallback to 0)
+                const numVal = Number(rawVal) || 0;
+                dayMap[dp.date] = numVal;
+            });
+
+            // create ordered array of daily values aligned to labelsFinal (default 0)
+            const dailyValues = labelsFinal.map(d => (typeof dayMap[d] !== 'undefined' ? dayMap[d] : 0));
+
+            // If the API indicates cumulative metric, convert daily values to running cumulative on client
+            const isCumulative = apiResponse.metric_type === 'cumulative';
+            const data = [];
+            if (isCumulative) {
+                let running = 0;
+                dailyValues.forEach(v => {
+                    running += (v || 0);
+                    data.push(running);
+                });
+            } else {
+                // use daily values directly
+                for (let i = 0; i < dailyValues.length; i++) data.push(dailyValues[i]);
+            }
+
+            const color = RANK_COLORS[u.rank] || '#888888';
+            return {
+                label: u.name,
+                data,
+                borderColor: color,
+                backgroundColor: color,
+                tension: 0.25,
+                pointRadius: 2,
+                pointHoverRadius: 6,
+                spanGaps: true,
+                // keep reference for legend
+                _userMeta: { id: u.id, avatar: u.avatar || '', rank: u.rank }
+            };
+        });
+
+        return { labels: labelsFinal, datasets };
+    }
+
+    function createLegend(datasets) {
+        const legendEl = document.getElementById(LEGEND_ID);
+        if (!legendEl) return;
+        legendEl.innerHTML = '';
+        datasets.forEach(ds => {
+            const meta = ds._userMeta || {};
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex items-center gap-2 p-2 bg-[#1c1c1c] pixel-border';
+            const img = document.createElement('img');
+            img.src = meta.avatar || `https://placehold.co/32x32/222/cccccc?text=${(ds.label || 'U').charAt(0).toUpperCase()}`;
+            img.alt = ds.label;
+            img.className = 'w-8 h-8';
+            img.style.objectFit = 'cover';
+            img.style.imageRendering = 'pixelated';
+            img.style.border = `2px solid ${RANK_COLORS[meta.rank] || '#666'}`;
+            img.style.borderRadius = '4px';
+            const name = document.createElement('div');
+            name.className = 'font-pixel text-sm text-white';
+            name.textContent = `${ds.label} (${meta.rank || '?'})`;
+            wrapper.appendChild(img);
+            wrapper.appendChild(name);
+            legendEl.appendChild(wrapper);
+        });
+    }
+
+    function renderChart(formatted) {
+        if (!formatted) return;
+        const ctx = document.getElementById(CHART_CANVAS_ID).getContext('2d');
+        if (cumulativeChart) {
+            // update datasets and labels
+            cumulativeChart.data.labels = formatted.labels;
+            cumulativeChart.data.datasets = formatted.datasets;
+            cumulativeChart.update();
+        } else {
+            cumulativeChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: formatted.labels,
+                    datasets: formatted.datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const v = context.parsed.y;
+                                    return `${context.dataset.label}: ${v !== null ? v : '—'}`;
+                                },
+                                title: function(items) {
+                                    return items && items.length ? items[0].label : '';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: 'Date', color: '#bbb' },
+                            ticks: { color: '#ddd' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: 'Value', color: '#bbb' },
+                            ticks: { color: '#ddd' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        // build custom legend
+        createLegend(formatted.datasets);
+    }
+
+    // kick off
+    (async function init() {
+        const resp = await fetchCumulativeData();
+        if (!resp) return;
+        const formatted = formatChartData(resp);
+        renderChart(formatted);
+    })();
 });
 </script>
 {% endblock %}

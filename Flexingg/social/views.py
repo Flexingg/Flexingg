@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.db.models import Q
 from .models import Friendship, Group, GroupMembership
 from django import forms
-from liftosaur.models import Workout, WorkoutExercise, WorkoutSet
+from liftosaur.models import Workout as LWorkout, WorkoutExercise, WorkoutSet
 from django.db.models import Sum, F, Value, IntegerField, DecimalField
 from django.db.models.functions import Coalesce
 from django.db.models import FloatField
@@ -13,6 +13,37 @@ from core.models import *
 from datetime import timedelta, date
 from django.utils import timezone
 from django.db.models import FloatField
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+
+# Constants and helper functions for cumulative API
+CUMULATIVE_METRICS = {'steps', 'calories', 'lifts', 'coins', 'gems', 'consumed', 'water'}
+DAILY_METRICS = {'sleep', 'bodyweight'}
+
+def get_time_range_and_granularity(history_label):
+    """
+    Returns (start_date, end_date, granularity).
+    Weekly/Monthly -> daily granularity; All Time (or others) -> weekly sampling (last 52 weeks).
+    """
+    today = timezone.now().date()
+    if history_label and history_label.lower() == 'weekly':
+        start = today - timedelta(days=6)
+        gran = 'daily'
+    elif history_label and history_label.lower() == 'monthly':
+        start = today - timedelta(days=29)
+        gran = 'daily'
+    else:
+        # All Time -> sample last 52 weeks
+        start = today - timedelta(weeks=52)
+        gran = 'weekly'
+    return start, today, gran
+
+def daterange(start_date, end_date):
+    """
+    Yield each date between start_date and end_date inclusive.
+    """
+    for n in range(int((end_date - start_date).days) + 1):
+        yield start_date + timedelta(n)
 
 def calculate_lift_volume(user, since_date):
     """
@@ -248,9 +279,10 @@ def social_main(request):
         # Calculate total lift volume for each user
         lift_volumes = {}
         for user in users:
-            workouts = Workout.objects.filter(
-                user=user, 
-                start_time__date__gte=cutoff
+            # Use unified/core Workout.start_time for the social leaderboard aggregation
+            workouts = LWorkout.objects.filter(
+                user=user,
+                timestamp__date__gte=cutoff
             )
             total_volume = 0
             for workout in workouts:
@@ -470,3 +502,283 @@ def social_main(request):
         'available_categories': list(available_metrics.keys()),
         'user_groups': user_groups
     })
+
+@require_GET
+def cumulative_data_api(request):
+    """
+    API endpoint: /social/api/cumulative-data/
+    Parameters: category, history, scope, group_id
+    Returns JSON structure described in Docs/plan.md
+    """
+    category = request.GET.get('category', 'steps')
+    history = request.GET.get('history', 'All Time')
+    scope = request.GET.get('scope', 'Global')
+    group_id = request.GET.get('group_id')
+
+    # normalize scope
+    scope_lc = scope.lower() if scope else 'global'
+
+    # determine date range and granularity
+    start_date, end_date, granularity = get_time_range_and_granularity(history)
+
+    # build base users queryset based on scope (reuse logic from social_main)
+    if scope_lc == 'friends':
+        users_qs = UserProfile.objects.filter(
+            Q(friendship_requests_sent__to_user=request.user, friendship_requests_sent__status='accepted') |
+            Q(friendship_requests_received__from_user=request.user, friendship_requests_received__status='accepted')
+        ).exclude(id=request.user.id)
+    elif scope_lc == 'group' and group_id:
+        try:
+            group = Group.objects.get(id=group_id)
+        except Group.DoesNotExist:
+            return JsonResponse({'error': 'Group not found'}, status=404)
+        if not GroupMembership.objects.filter(user=request.user, group=group).exists():
+            return JsonResponse({'error': 'Not a member of group'}, status=403)
+        users_qs = UserProfile.objects.filter(member_groups__group=group)
+    else:
+        users_qs = UserProfile.objects.all()
+
+    # Batch-aggregate totals per user for ranking to avoid per-user queries
+    user_ids = list(users_qs.values_list('id', flat=True)[:1000])  # cap for safety
+
+    totals_map = {}
+    if category == 'steps':
+        from garminconnect.models import GarminDailySteps
+        qs = GarminDailySteps.objects.filter(user_id__in=user_ids, date__gte=start_date, date__lte=end_date)
+        for row in qs.values('user_id').annotate(total=Coalesce(Sum('steps'), 0)):
+            totals_map[row['user_id']] = row['total'] or 0
+    elif category == 'calories':
+        from garminconnect.models import GarminActivity
+        qs = GarminActivity.objects.filter(user_id__in=user_ids, start_time_utc__date__gte=start_date, start_time_utc__date__lte=end_date)
+        for row in qs.values('user_id').annotate(total=Coalesce(Sum('calories'), 0)):
+            totals_map[row['user_id']] = row['total'] or 0
+    elif category == 'lifts':
+        # Aggregate from both liftosaur.Workout (uses `timestamp`) and core.models.Workout (uses `start_time`)
+        try:
+            from liftosaur.models import Workout as LWorkout
+        except Exception:
+            LWorkout = None
+        try:
+            from core.models import Workout as CoreWorkout
+        except Exception:
+            CoreWorkout = None
+
+        lworkouts = LWorkout.objects.filter(user_id__in=user_ids, timestamp__date__gte=start_date, timestamp__date__lte=end_date).select_related('user') if (LWorkout is not None and hasattr(LWorkout, 'timestamp')) else []
+        cworkouts = CoreWorkout.objects.filter(user_id__in=user_ids, start_time__date__gte=start_date, start_time__date__lte=end_date).select_related('user') if (CoreWorkout is not None and hasattr(CoreWorkout, 'start_time')) else []
+
+        for w in list(lworkouts) + list(cworkouts):
+            try:
+                uid = getattr(w, 'user_id', None) or (getattr(w, 'user', None).id if getattr(w, 'user', None) else None)
+                totals_map.setdefault(uid, 0)
+                if hasattr(w, 'get_total_volume'):
+                    totals_map[uid] += float(w.get_total_volume(unit='lb') or 0)
+                else:
+                    # fallback: attempt common attribute name if present
+                    if hasattr(w, 'total_volume'):
+                        totals_map[uid] += float(getattr(w, 'total_volume') or 0)
+            except Exception:
+                continue
+    elif category == 'coins':
+        total_qs = Transaction.objects.filter(user_id__in=user_ids, currency_type='cardio_coins', created_at__date__gte=start_date, created_at__date__lte=end_date)
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), 0)):
+            totals_map[row['user_id']] = float(row['total'] or 0)
+    elif category == 'gems':
+        total_qs = Transaction.objects.filter(user_id__in=user_ids, currency_type='gym_gems', created_at__date__gte=start_date, created_at__date__lte=end_date)
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount'), 0)):
+            totals_map[row['user_id']] = float(row['total'] or 0)
+    elif category == 'consumed':
+        total_qs = NutritionEntry.objects.filter(user_id__in=user_ids, datetime__date__gte=start_date, datetime__date__lte=end_date)
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('calories'), 0)):
+            totals_map[row['user_id']] = float(row['total'] or 0)
+    elif category == 'water':
+        total_qs = DailyWater.objects.filter(user_id__in=user_ids, date__gte=start_date, date__lte=end_date)
+        for row in total_qs.values('user_id').annotate(total=Coalesce(Sum('amount_ounces'), 0)):
+            totals_map[row['user_id']] = float(row['total'] or 0)
+    elif category == 'sleep':
+        # aggregate total sleep hours per user by scanning Sleep rows in batch
+        sleep_qs = Sleep.objects.filter(user_id__in=user_ids, start_time__date__gte=start_date, start_time__date__lte=end_date)
+        for s in sleep_qs:
+            if s.end_time and s.start_time:
+                secs = (s.end_time - s.start_time).total_seconds()
+                totals_map.setdefault(s.user_id, 0)
+                totals_map[s.user_id] += secs / 3600.0
+    else:
+        # fallback, try to annotate with provided info if available
+        try:
+            # attempt to use available_metrics mapping if present earlier in file
+            info_field = info.get('field')
+            if info_field is not None:
+                annotated_totals = users_qs.filter(id__in=user_ids).values('id').annotate(total=Coalesce(info_field, 0))
+                for row in annotated_totals:
+                    totals_map[row['id']] = float(row.get('total') or 0)
+        except Exception:
+            pass
+
+    # Ensure every user has an entry (default 0)
+    for uid in user_ids:
+        totals_map.setdefault(uid, 0)
+
+    # Build sorted list of (UserProfile, total) for top 10
+    users_with_totals = []
+    users_by_id = {u.id: u for u in users_qs}
+    for uid, tot in totals_map.items():
+        user_obj = users_by_id.get(uid)
+        if user_obj:
+            users_with_totals.append((user_obj, tot))
+    user_totals_sorted = sorted(users_with_totals, key=lambda x: x[1], reverse=True)[:10]
+
+    # Build labels depending on granularity
+    labels = []
+    if granularity == 'daily':
+        for d in daterange(start_date, end_date):
+            labels.append(d.isoformat())
+    else:
+        # weekly buckets starting on start_date, label by week-start ISO date
+        cur = start_date
+        while cur <= end_date:
+            labels.append(cur.isoformat())
+            cur = cur + timedelta(weeks=1)
+
+    # For the selected top users, fetch per-label aggregates in bulk to minimize queries.
+    top_user_ids = [u.id for u, _ in user_totals_sorted]
+    users_response = []
+
+    # Preload mappings per (user_id, date) for supported categories
+    per_user_date_map = {}  # (user_id, date_iso) -> value
+    if category in ('steps',):
+        from garminconnect.models import GarminDailySteps
+        qs = GarminDailySteps.objects.filter(user_id__in=top_user_ids, date__gte=start_date, date__lte=end_date)
+        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('steps'), 0)):
+            per_user_date_map[(row['user_id'], row['date'].isoformat())] = row['total'] or 0
+    elif category in ('calories',):
+        from garminconnect.models import GarminActivity
+        qs = GarminActivity.objects.filter(user_id__in=top_user_ids, start_time_utc__date__gte=start_date, start_time_utc__date__lte=end_date)
+        for row in qs.values('user_id', start_date_field:= 'start_time_utc__date').annotate(total=Coalesce(Sum('calories'), 0)):
+            # values() with dynamic field name returns key like start_time_utc__date
+            d = row.get(start_date_field) or row.get('start_time_utc__date')
+            if d:
+                per_user_date_map[(row['user_id'], d.isoformat())] = row['total'] or 0
+    elif category in ('coins', 'gems'):
+        tx_filter = {'currency_type': 'cardio_coins' if category == 'coins' else 'gym_gems'}
+        qs = Transaction.objects.filter(user_id__in=top_user_ids, created_at__date__gte=start_date, created_at__date__lte=end_date, **tx_filter)
+        for row in qs.values('user_id', 'created_at__date').annotate(total=Coalesce(Sum('amount'), 0)):
+            d = row.get('created_at__date')
+            if d:
+                per_user_date_map[(row['user_id'], d.isoformat())] = float(row['total'] or 0)
+    elif category in ('consumed',):
+        qs = NutritionEntry.objects.filter(user_id__in=top_user_ids, datetime__date__gte=start_date, datetime__date__lte=end_date)
+        for row in qs.values('user_id', 'datetime__date').annotate(total=Coalesce(Sum('calories'), 0)):
+            d = row.get('datetime__date')
+            if d:
+                per_user_date_map[(row['user_id'], d.isoformat())] = float(row['total'] or 0)
+    elif category in ('water',):
+        qs = DailyWater.objects.filter(user_id__in=top_user_ids, date__gte=start_date, date__lte=end_date)
+        for row in qs.values('user_id', 'date').annotate(total=Coalesce(Sum('amount_ounces'), 0)):
+            per_user_date_map[(row['user_id'], row['date'].isoformat())] = float(row['total'] or 0)
+    elif category in ('sleep',):
+        qs = Sleep.objects.filter(user_id__in=top_user_ids, start_time__date__gte=start_date, start_time__date__lte=end_date)
+        for s in qs:
+            if s.end_time and s.start_time:
+                d = s.start_time.date().isoformat()
+                secs = (s.end_time - s.start_time).total_seconds()
+                per_user_date_map.setdefault((s.user_id, d), 0)
+                per_user_date_map[(s.user_id, d)] += round(secs / 3600.0, 2)
+    elif category in ('lifts',):
+        # fetch workouts for all top users in range from both liftosaur and core Workouts,
+        # compute per-workout volume, then bucket by date (using timestamp or start_time)
+        try:
+            from liftosaur.models import Workout as LWorkout
+        except Exception:
+            LWorkout = None
+        try:
+            from core.models import Workout as CoreWorkout
+        except Exception:
+            CoreWorkout = None
+
+        lws = LWorkout.objects.filter(user_id__in=top_user_ids, timestamp__date__gte=start_date, timestamp__date__lte=end_date).select_related('user') if (LWorkout is not None and hasattr(LWorkout, 'timestamp')) else []
+        cws = CoreWorkout.objects.filter(user_id__in=top_user_ids, start_time__date__gte=start_date, start_time__date__lte=end_date).select_related('user') if (CoreWorkout is not None and hasattr(CoreWorkout, 'start_time')) else []
+
+        for w in list(lws) + list(cws):
+            try:
+                # determine user id
+                uid = getattr(w, 'user_id', None) or (getattr(w, 'user', None).id if getattr(w, 'user', None) else None)
+                # determine date from timestamp or start_time
+                dt = None
+                if hasattr(w, 'timestamp') and getattr(w, 'timestamp') is not None:
+                    dt = getattr(w, 'timestamp')
+                elif hasattr(w, 'start_time') and getattr(w, 'start_time') is not None:
+                    dt = getattr(w, 'start_time')
+                if dt is None:
+                    continue
+                # Prefer object-level get_total_volume (core.Workout). If missing (Liftosaur Workout),
+                # compute by summing exercises' volumes via their get_volume method.
+                vol = 0.0
+                if hasattr(w, 'get_total_volume'):
+                    try:
+                        vol = float(w.get_total_volume(unit='lb') or 0)
+                    except Exception:
+                        vol = 0.0
+                else:
+                    # Try to sum related exercises (Liftosaur model uses .exercises related_name)
+                    ex_qs = getattr(w, 'exercises', None) or getattr(w, 'unified_exercises', None)
+                    if ex_qs is not None and hasattr(ex_qs, 'all'):
+                        try:
+                            for ex in ex_qs.all():
+                                if hasattr(ex, 'get_volume'):
+                                    vol += float(ex.get_volume('lb') or 0)
+                        except Exception:
+                            vol = vol or 0.0
+                d = dt.date().isoformat()
+                per_user_date_map.setdefault((uid, d), 0)
+                per_user_date_map[(uid, d)] += vol
+            except Exception:
+                continue
+
+    # Now build the response per user using the per_user_date_map to avoid per-user DB hits
+    for idx, (user, total_val) in enumerate(user_totals_sorted):
+        running = 0
+        data_points = []
+        for lbl in labels:
+            # If we're using weekly granularity, sum the 7-day bucket starting at the label date.
+            if granularity == 'weekly':
+                try:
+                    start_lbl_date = date.fromisoformat(lbl)
+                except Exception:
+                    # Fallback: treat label as daily if parsing fails
+                    start_lbl_date = None
+                if start_lbl_date:
+                    week_sum = 0.0
+                    for i in range(7):
+                        key_date = (start_lbl_date + timedelta(days=i)).isoformat()
+                        week_sum += float(per_user_date_map.get((user.id, key_date), 0) or 0)
+                    v_num = week_sum
+                else:
+                    v_num = float(per_user_date_map.get((user.id, lbl), 0) or 0)
+            else:
+                v = per_user_date_map.get((user.id, lbl), 0)
+                try:
+                    v_num = float(v)
+                except Exception:
+                    v_num = v if v is not None else 0
+            if category in CUMULATIVE_METRICS:
+                running += (v_num or 0)
+                data_points.append({'date': lbl, 'value': v_num, 'cumulative_value': running})
+            else:
+                data_points.append({'date': lbl, 'value': v_num})
+
+        users_response.append({
+            'id': user.id,
+            'name': user.username,
+            'avatar': user.avatar.url if getattr(user, 'avatar', None) else '',
+            'rank': idx + 1,
+            'podium_position': 'gold' if idx == 0 else ('silver' if idx == 1 else ('bronze' if idx == 2 else '')),
+            'data_points': data_points
+        })
+
+    resp = {
+        'users': users_response,
+        'date_range': {'start': labels[0] if labels else start_date.isoformat(), 'end': labels[-1] if labels else end_date.isoformat()},
+        'granularity': granularity,
+        'metric_type': 'cumulative' if category in CUMULATIVE_METRICS else 'daily'
+    }
+    return JsonResponse(resp, safe=True)
