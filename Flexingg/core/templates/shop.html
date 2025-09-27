@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static humanize %}
 
 {% block title %}Shop - Flexin.gg{% endblock %}
 
@@ -97,9 +97,10 @@
 {% endblock %}
 
 {% block top_bar_content %}
-<div class="p-4 flex-shrink-0">
-    <h3 class="font-pixel text-2xl text-center text-[#f7b801] pt-2">SHOP</h3>
-</div>
+    {{ block.super }}
+    <div class="p-4 flex-shrink-0">
+        <h3 class="font-pixel text-2xl text-center text-[#f7b801] pt-2">SHOP</h3>
+    </div>
 {% endblock %}
 
 {% block content %}
@@ -122,11 +123,19 @@
             <div class="pixel-border bg-[#2a2a2a] p-3 flex justify-around text-center">
                 <div>
                     <p class="font-pixel text-yellow-400">CardioCoins</p>
-                    <p class="font-pixel text-lg mt-1">1,250</p>
+                    {% if request.user.is_authenticated %}
+                        <p class="font-pixel text-lg mt-1">{{ request.user.cardio_coins|floatformat:0 }}</p>
+                    {% else %}
+                        <p class="font-pixel text-lg mt-1">0</p>
+                    {% endif %}
                 </div>
                 <div>
-                    <p class="font-pixel text-cyan-400">GymGems</p>
-                    <p class="font-pixel text-lg mt-1">150</p>
+                    <p class="font-pixel text-blue-400">GymGems</p>
+                    {% if request.user.is_authenticated %}
+                        <p class="font-pixel text-lg mt-1">{{ request.user.gym_gems|floatformat:0 }}</p>
+                    {% else %}
+                        <p class="font-pixel text-lg mt-1">0</p>
+                    {% endif %}
                 </div>
             </div>
 
