@@ -15,7 +15,7 @@
             {% csrf_token %}
 
             {% component "profile_section" profile=profile form=form %}{% endcomponent %}
-            {% component "account_section" profile=profile form=form %}{% endcomponent %}
+            <!-- {% component "account_section" profile=profile form=form %}{% endcomponent %} -->
 
             <!-- Action Buttons -->
             <section class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4"/>
@@ -24,12 +24,6 @@
         </form>
     </section>
 
-    <!-- Notifications -->
-    <section>
-        <h3 class="font-pixel text-lg text-cyan-300">NOTIFICATIONS</h3>
-        {% component "notifications_section" %}{% endcomponent %}
-    </section>
-    
     <!-- Integrations -->
     <section>
         <h3 class="font-pixel text-lg text-purple-400">INTEGRATIONS</h3>
@@ -51,6 +45,12 @@
                 MANAGE DATA PRIORITIES
             </a>
         </div>
+    </section>
+
+    <!-- Notifications -->
+    <section>
+        <h3 class="font-pixel text-lg text-cyan-300">NOTIFICATIONS</h3>
+        {% component "notifications_section" %}{% endcomponent %}
     </section>
 
     <!-- Stat Card Configuration UI (SortableJS) -->
