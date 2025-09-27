@@ -163,6 +163,9 @@ class HomeView(TemplateView):
             except Garmin_Auth.DoesNotExist:
                 pass
 
+            # Expose whether the user has any connected integrations to templates
+            context['has_connected_services'] = bool(has_connected_services)
+            
             if needs_sync and has_connected_services:
                 sync_user_data.delay(profile.id)
                 context['sync_triggered'] = True
@@ -332,6 +335,7 @@ class StatsAPIView(LoginRequiredMixin, View):
 
         # Lifting volume
         # Calculate lifting volume robustly (sum of lbs -> convert to thousands)
+        # Compute total_volume_k on the server instead of reading from cookies
         total_volume_k = 0.0
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
@@ -340,7 +344,7 @@ class StatsAPIView(LoginRequiredMixin, View):
                 total_volume_k += (vol_lbs / 1000.0)
             except Exception:
                 # ignore per-workout errors
-                pass
+                continue
 
         # Water intake
         water_ounces = DailyWater.objects.filter(
@@ -352,6 +356,11 @@ class StatsAPIView(LoginRequiredMixin, View):
         # Calculate lifting volume robustly in lbs (diagnostics only — do not overwrite total_volume)
         total_volume = 0
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
+        for workout in workouts:
+            vol_lbs = _workout_volume_lbs(workout)
+            # volume_k is thousands of lbs
+            vol_k = vol_lbs / 1000.0
+            total_volume += vol_lbs
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
@@ -366,11 +375,27 @@ class StatsAPIView(LoginRequiredMixin, View):
         }
 
         if get_earliest:
-            # Not using this feature right now — built into the API client request handling.
-            # Keeping HERE just in case a future client needs it for stat cards
-            raise NotImplementedError("Getting earliest dates in API response is not implemented")
-        else:
-            return JsonResponse(response_data)
+            earliest_candidates = []
+            # Steps earliest
+            steps_min = DailySteps.objects.filter(user=profile).aggregate(min_date=Min('date'))['min_date']
+            if steps_min:
+                earliest_candidates.append(steps_min)
+            # Workouts earliest
+            workout_min = Workout.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
+            if workout_min:
+                earliest_candidates.append(workout_min)
+            # Sleep earliest
+            sleep_min = Sleep.objects.filter(user=profile).aggregate(min_date=Min('start_time__date'))['min_date']
+            if sleep_min:
+                earliest_candidates.append(sleep_min)
+
+            if earliest_candidates:
+                earliest_date = min(earliest_candidates)
+                response_data['earliest_date'] = earliest_date.isoformat()
+            else:
+                response_data['earliest_date'] = today.isoformat()  # No data, use today
+
+        return JsonResponse(response_data)
 
 
 # --- Detail API for stat cards (Graph points + optional list) ---
@@ -382,9 +407,17 @@ from .models import *  # JWT, Notification, Relationship
 from healthconnect.utils import get_daily_consumed_calories
 from healthconnect.sync_tasks import healthconnect_sync_task
 from django.contrib.staticfiles.finders import find
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Sum, FloatField
+from django.db.models.functions import Cast
+from decimal import Decimal
+import random
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Sum, Min
+import os
 from django.db import transaction
 from django.utils import timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
@@ -517,6 +550,9 @@ class HomeView(TemplateView):
             except Garmin_Auth.DoesNotExist:
                 pass
 
+            # Expose whether the user has any connected integrations to templates
+            context['has_connected_services'] = bool(has_connected_services)
+            
             if needs_sync and has_connected_services:
                 sync_user_data.delay(profile.id)
                 context['sync_triggered'] = True

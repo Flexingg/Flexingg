@@ -60,6 +60,42 @@ document.addEventListener('DOMContentLoaded', function() {
     let earliestDate = today;
     let currentDate = today;
 
+    // User stat card config: fetch user's saved stat_card_config and apply visibility/order
+    async function applyUserConfig() {
+        try {
+            const resp = await fetch('{% url "fitness:stat_config_api" %}');
+            if (!resp.ok) return;
+            const json = await resp.json();
+            if (json.status !== 'ok' || !Array.isArray(json.config)) return;
+            const cfg = json.config;
+            const orderMap = {};
+            const visibleMap = {};
+            cfg.forEach(item => {
+                orderMap[item.key] = Number(item.order || 99);
+                visibleMap[item.key] = !!item.visible;
+            });
+            // Hide/show cards
+            document.querySelectorAll('.stat-card-clickable').forEach(el => {
+                const key = el.dataset.statKey;
+                if (visibleMap.hasOwnProperty(key) && !visibleMap[key]) {
+                    el.style.display = 'none';
+                } else {
+                    el.style.display = '';
+                }
+            });
+            // Reorder visible cards
+            const cards = Array.from(statsGrid.querySelectorAll('.stat-card-clickable'));
+            cards.sort((a, b) => {
+                const oa = orderMap[a.dataset.statKey] ?? 99;
+                const ob = orderMap[b.dataset.statKey] ?? 99;
+                return oa - ob;
+            });
+            cards.forEach(c => statsGrid.appendChild(c));
+        } catch (err) {
+            console.warn('Failed to apply user stat config', err);
+        }
+    }
+
     // Map stat keys to their corresponding metric keys in the API response
     const STAT_KEY_MAP = {
         'cardio_burned': 'calories',
@@ -100,6 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
             datePicker.max = today;
             datePicker.value = today;
             updateDisplay(data);
+            // Apply user's saved stat card configuration (visibility + ordering)
+            await applyUserConfig();
             await fetchStats(today);
         } catch (error) {
             console.error('Init stats error:', error);

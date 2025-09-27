@@ -98,6 +98,62 @@
 <!-- Hidden CSRF token for background sync -->
 {% csrf_token %}
 
+{# Integration setup prompt: show modal if user is logged in and has no connected services #}
+{% if request.user.is_authenticated and not has_connected_services %}
+<!-- Integrations Prompt Modal -->
+<div id="integrations-prompt-modal" aria-hidden="true" class="fixed inset-0 z-50 hidden flex items-start justify-center pt-24 pointer-events-none">
+    <div class="w-11/12 max-w-md p-4 pixel-border shadow-lg pointer-events-auto rounded-md" style="background-color: rgba(42,42,42,0.98);">
+        <h2 class="font-pixel text-center text-lg text-[#00f5d4] mb-2">Connect Integrations</h2>
+        <p class="text-sm text-gray-300 mb-4">You haven't connected any integrations (Garmin, Health Connect, Liftosaur). Connect them in Settings to enable background syncing and unlock full features.</p>
+        <div class="flex space-x-2">
+            <a href="{% url 'fitness:settings' %}" id="integrations-go-settings" class="pixel-button flex-1 px-4 py-2 text-center font-pixel text-sm text-cyan-300">GO TO SETTINGS</a>
+            <button id="integrations-dismiss" class="pixel-button px-4 py-2 font-pixel text-sm text-gray-300">DISMISS</button>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">You can always configure integrations later from the settings page.</p>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const modal = document.getElementById('integrations-prompt-modal');
+        const dismiss = document.getElementById('integrations-dismiss');
+        const goSettings = document.getElementById('integrations-go-settings');
+        // Show modal after small delay so page render isn't blocked
+        setTimeout(() => {
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+        }, 500);
+
+        if (dismiss) {
+            dismiss.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (modal) {
+                    modal.classList.add('hidden');
+                    modal.setAttribute('aria-hidden', 'true');
+                }
+            });
+        }
+
+        // If the user navigates to settings via the button, let the anchor handle navigation.
+        if (goSettings) {
+            goSettings.addEventListener('click', function() {
+                // Close the modal immediately to avoid visual flash on navigation
+                if (modal) {
+                    modal.classList.add('hidden');
+                    modal.setAttribute('aria-hidden', 'true');
+                }
+            });
+        }
+    } catch (err) {
+        console.error('Integrations modal error', err);
+    }
+});
+</script>
+{% endif %}
+
 <!-- App Container -->
 <div class="w-full min-h-screen bg-[#1c1c1c] md:max-w-7xl md:mx-auto md:my-8 md:h-auto md:min-h-[850px] md:rounded-2xl md:shadow-2xl" style="background-color: #121212;">
 
@@ -154,10 +210,14 @@
 
 <!-- Background sync script -->
 <script>
-    var garmin_auth = {{ garmin_auth|yesno:"true,false" }};
+{% if garmin_auth %}
+    var garmin_auth = true;
+{% else %}
+    var garmin_auth = false;
+{% endif %}
     var background_garmin_sync_url = '{% url "garminconnect:background_garmin_sync" %}';
 
-   
+
     // Always refresh on load
     document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM loaded, refreshing steps display');
