@@ -15,6 +15,16 @@ class Coins(component.Component):
             coins = getattr(user, currency_type, 0)
         else:
             coins = kwargs.get('coins', 0)
-        context['coins'] = coins
+
+        def _to_int(val):
+            try:
+                return int(round(val))
+            except Exception:
+                try:
+                    return int(val)
+                except Exception:
+                    return 0
+
+        context['coins'] = _to_int(coins)
         context['currency_type'] = currency_type
         return context
