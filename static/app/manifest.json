@@ -49,9 +49,24 @@
       "type": "image/jpeg"
     },
     {
-      "src": "/static/screenshots/base-screenshot-2.png",
+      "src": "/static/screenshots/screenshot-2.jpg",
       "sizes": "1280x720",
-      "type": "image/png"
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/static/screenshots/screenshot-3.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/static/screenshots/screenshot-4.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/static/screenshots/screenshot-5.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
     }
   ],
   "prefer_related_applications": false,

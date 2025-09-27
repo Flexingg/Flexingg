@@ -12,6 +12,10 @@ from core.models import UserProfile, ConnectedService
 import logging
 from healthconnect.sync_tasks import healthconnect_sync_task
 from healthconnect.normalization_tasks import *
+from botocore.exceptions import BotoCoreError, ClientError
+from django.conf import settings
+import boto3
+from botocore.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +184,83 @@ def disconnect_healthconnect(request):
     if not is_ajax:
         return redirect('fitness:settings')
     return JsonResponse({'status': 'error', 'message': 'Invalid request.'}, status=405)
+
+
+# New view: generate/redirect to presigned S3 URL (fallback to local static path)
+def download_flexingg_sync_apk(request):
+    """
+    Redirects to a presigned S3 URL for the Flexingg‑Sync APK if S3 is configured,
+    otherwise falls back to serving the local static file at /static/apk/flexingg-sync.apk.
+    """
+    bucket = getattr(settings, "AWS_STORAGE_BUCKET_NAME", None)
+    access_key = getattr(settings, "AWS_ACCESS_KEY_ID", None)
+    secret_key = getattr(settings, "AWS_SECRET_ACCESS_KEY", None)
+    endpoint = getattr(settings, "AWS_S3_ENDPOINT_URL", None)
+
+    # Key used in the bucket for the apk. Adjust if your deployment stores static files under a different prefix.
+    s3_key = 'static/apk/flexingg-sync.apk'
+
+    if bucket and access_key and secret_key:
+        try:
+            # Use SigV4 and path addressing which is required by many S3-compatible providers (e.g., Cloudflare R2)
+            botocore_config = Config(
+                signature_version='s3v4',
+                s3={'addressing_style': getattr(settings, 'AWS_S3_ADDRESSING_STYLE', 'path')}
+            )
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                endpoint_url=endpoint,
+                config=botocore_config,
+                region_name=getattr(settings, 'AWS_S3_REGION_NAME', None)
+            )
+            # Allow explicit override via settings (set HEALTHCONNECT_APK_S3_KEY in your env if needed)
+            override_key = getattr(settings, 'HEALTHCONNECT_APK_S3_KEY', None)
+            candidate_keys = []
+            if override_key:
+                candidate_keys.append(override_key)
+            # Common locations we may have stored the apk in the bucket
+            candidate_keys.extend([
+                s3_key,
+                f'flexingg/{s3_key}',
+                f'flexingg-dev/{s3_key}',
+                f'flexingg/static/{s3_key}',
+                f'{s3_key}',  # fallback duplicate entry ensures original is present
+            ])
+            # Deduplicate while preserving order
+            seen = set()
+            candidate_keys = [k for k in candidate_keys if not (k in seen or seen.add(k))]
+            presigned_url = None
+            for key in candidate_keys:
+                logger.debug("Attempting presign head_object for key: %s", key)
+                try:
+                    # Verify object exists (head_object) before presigning where possible
+                    s3_client.head_object(Bucket=bucket, Key=key)
+                    presigned_url = s3_client.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': bucket, 'Key': key},
+                        ExpiresIn=3600  # 1 hour
+                    )
+                    break
+                except ClientError:
+                    # Try next candidate key if object not found / inaccessible
+                    continue
+            # If none of the candidate keys were found, still attempt to generate a presign for the original key
+            if not presigned_url:
+                logger.debug("No candidate keys found via head_object; generating presign for default key: %s", s3_key)
+                presigned_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket, 'Key': s3_key},
+                    ExpiresIn=3600
+                )
+            return redirect(presigned_url)
+        except (BotoCoreError, ClientError, Exception) as e:
+            logger.exception("Failed to generate presigned S3 URL for flexingg-sync APK: %s", e)
+
+    # Fallback to local static file
+    static_fallback = getattr(settings, "STATIC_URL", "/static/") + "apk/flexingg-sync.apk"
+    return redirect(static_fallback)
 
 
 # Placeholder for render views if needed

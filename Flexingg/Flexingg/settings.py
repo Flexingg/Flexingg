@@ -184,41 +184,37 @@ STATICFILES_DIRS = [
     BASE_DIR.parent / 'static',
 ]
 
-# Media files configuration - Force local for development to avoid S3 issues
-DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
 
 # S3 config for production (commented out for now)
-# if not DEBUG:
-#     MEDIA_URL = f'https://{AWS_CUSTOM_DOMAIN}/media/'
-#     DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+if not DEBUG:
+    MEDIA_URL = f'https://{AWS_CUSTOM_DOMAIN}/media/'
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 # Storage configuration - Disabled for local development to use FileSystemStorage
-# STORAGES = {
-#     "default": {
-#         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-#         "OPTIONS": {
-#             'bucket_name': AWS_STORAGE_BUCKET_NAME,
-#             'default_acl': 'public-read',
-#             'endpoint_url': AWS_S3_ENDPOINT_URL,
-#             'signature_version': 's3v4',
-#             'location': 'media',
-#             'addressing_style': 'path',  # Added for R2
-#         },
-#     },
-#     "staticfiles": {
-#         "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
-#         "OPTIONS": {
-#             'bucket_name': AWS_STORAGE_BUCKET_NAME,
-#             'default_acl': 'public-read',
-#             'endpoint_url': AWS_S3_ENDPOINT_URL,
-#             'signature_version': 's3v4',
-#             'location': 'static',
-#             'addressing_style': 'path',  # Added for R2
-#         },
-#     },
-# }
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'default_acl': 'public-read',
+            'endpoint_url': AWS_S3_ENDPOINT_URL,
+            'signature_version': 's3v4',
+            'location': 'media',
+            'addressing_style': 'path',  # Added for R2
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        "OPTIONS": {
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'default_acl': 'public-read',
+            'endpoint_url': AWS_S3_ENDPOINT_URL,
+            'signature_version': 's3v4',
+            'location': 'static',
+            'addressing_style': 'path',  # Added for R2
+        },
+    },
+}
 
 # Favicon settings
 #FAVICON_PATH = os.path.join(STATIC_URL, 'app/icons/favicon.ico')

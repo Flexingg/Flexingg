@@ -67,7 +67,13 @@
 <div id="hc-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
         <h3 class="font-pixel text-lg text-white mb-4">Connect Health Connect</h3>
-        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your HCGateway credentials to connect your Health Connect data.</p>
+        <p class="font-pixel text-sm text-gray-300 mb-2">
+            Android users: downloading the Flexingg‑Sync app can link MyFitnessPal, MacroFactor, Oura, and more.
+        </p>
+        <a href="{% url 'healthconnect:download_apk' %}" target="_blank" class="pixel-button inline-block px-4 py-2 font-pixel text-xs text-cyan-300 mb-4">Download Flexingg‑Sync</a>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            After installing, point the app to <button type="button" class="font-mono text-blue-300 underline px-1" onclick="copyServerUrl()">https://api.flexin.gg</button> set a username &amp; password, then use the same credentials here to connect.
+        </p>
         <form method="post" action="{% url 'healthconnect:connect' %}" class="w-full h-full">
             {% csrf_token %}
             <div class="mb-4">
@@ -92,7 +98,13 @@
 <div id="hc-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
         <h3 class="font-pixel text-lg text-white mb-4">Connect Health Connect</h3>
-        <p class="font-pixel text-sm text-gray-300 mb-4">Enter your HCGateway credentials to connect your Health Connect data.</p>
+        <p class="font-pixel text-sm text-gray-300 mb-2">
+            Android users: downloading the Flexingg‑Sync app can link MyFitnessPal, MacroFactor, Oura, and more.
+        </p>
+        <a href="{% url 'healthconnect:download_apk' %}" target="_blank" class="pixel-button inline-block px-4 py-2 font-pixel text-xs text-cyan-300 mb-4">Download Flexingg‑Sync</a>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            After installing, point the app to <button type="button" class="font-mono text-cyan-300 underline px-1" onclick="copyServerUrl()">https://api.flexin.gg</button>, set a username &amp; password, then use the same credentials here to connect.
+        </p>
         <form method="post" action="{% url 'healthconnect:connect' %}" class="w-full h-full">
             {% csrf_token %}
             <div class="mb-4">
@@ -116,8 +128,9 @@
 {% if not garmin_connected %}
 <div id="garmin-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
     <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
-        <h3 class="font-pixel text-lg text-white mb-4">Connect Garmin Connect</h3>
-        <p class="font-pixel text-sm text-gray-300 mb-4">We do not store your password, only the OAuth token.</p>
+        <h3 class="font-pixel text-lg text-white mb-4">Link Garmin Connect</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">Link your Garmin Connect account to sync activities, steps, water, sleep, and bodyweight. <br>
+            We do not store your password, only the OAuth token.</p>
         <form method="post" action="{% url 'garminconnect:connect_garmin' %}" class="w-full h-full">
             {% csrf_token %}
             <div class="mb-4">
@@ -468,6 +481,44 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Inline Health Connect button not found');
     }
 
+    // Garmin Connect button handler (added)
+    const garminConnectBtn = document.getElementById('garmin-connect-btn');
+    console.log('Inline Garmin Connect button:', garminConnectBtn);
+    if (garminConnectBtn) {
+        garminConnectBtn.addEventListener('click', function() {
+            console.log('Inline Garmin connect button clicked');
+            toggleGarminModal();
+        });
+    } else {
+        console.log('Inline Garmin connect button not found');
+    }
+
+    // Garmin modal toggle (inline)
+    window.toggleGarminModal = function() {
+        console.log('toggleGarminModal called inline');
+        const modal = document.getElementById('garmin-modal');
+        console.log('Inline Garmin modal element:', modal);
+        if (modal) {
+            modal.classList.toggle('hidden');
+            console.log('Inline Garmin hidden class toggled');
+        } else {
+            console.log('Inline Garmin modal not found');
+        }
+    };
+
+    // Close Garmin modal when clicking outside (inline)
+    const garminModal = document.getElementById('garmin-modal');
+    if (garminModal) {
+        garminModal.addEventListener('click', function(e) {
+            if (e.target === garminModal) {
+                garminModal.classList.add('hidden');
+                console.log('Inline Garmin modal closed by outside click');
+            }
+        });
+    } else {
+        console.log('Inline Garmin modal not found on DOM load');
+    }
+
     // Health Connect modal toggle
     window.toggleHCModal = function() {
         console.log('toggleHCModal called');
@@ -520,7 +571,21 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     }
-
+    
+    // Copy server URL to clipboard (used by the Download Flexingg‑Sync instruction)
+    window.copyServerUrl = function() {
+        const url = 'https://api.flexin.gg';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Server URL copied to clipboard');
+            }).catch(() => {
+                prompt('Copy this server URL', url);
+            });
+        } else {
+            prompt('Copy this server URL', url);
+        }
+    };
+    
     // Handle HC sync with AJAX (healthconnect endpoint)
     const hcSyncFormHealth = document.querySelector('form[action*="healthconnect/sync/"]');
     if (hcSyncFormHealth) {

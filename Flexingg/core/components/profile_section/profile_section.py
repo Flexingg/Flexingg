@@ -1,6 +1,6 @@
 from django_components import component
 from django.utils import timezone
-from core.models import Workout, UserProfile
+from core.models import Workout, UserProfile, BodyWeight
 
 @component.register("profile_section")
 class ProfileSection(component.Component):
@@ -18,7 +18,33 @@ class ProfileSection(component.Component):
         context = super().get_context_data(**kwargs) or {}
         user = kwargs.get('profile') or kwargs.get('user') or getattr(kwargs.get('request'), 'user', None)
         target_date = kwargs.get('date') or timezone.now().date()
-        
+        # If a form was provided, prefer showing the latest BodyWeight entry as the weight initial value
+        form = kwargs.get('form')
+        if form and user and getattr(user, 'is_authenticated', True):
+            try:
+                bw = BodyWeight.objects.filter(user=user).order_by('-datetime').first()
+                if bw and getattr(bw, 'weight_lbs', None) is not None:
+                    form.initial = getattr(form, 'initial', {})
+                    try:
+                        form.initial['weight'] = float(bw.weight_lbs)
+                    except Exception:
+                        form.initial['weight'] = bw.weight_lbs
+                else:
+                    # Fallback to profile.bodyweight_lbs if available
+                    fb = getattr(user, 'bodyweight_lbs', None)
+                    if fb is not None:
+                        form.initial = getattr(form, 'initial', {})
+                        try:
+                            form.initial['weight'] = float(fb)
+                        except Exception:
+                            form.initial['weight'] = fb
+            except Exception:
+                # Ignore and continue; leave form as-is if any DB error occurs
+                pass
+        # Ensure the template receives the form instance
+        if form:
+            context['form'] = form
+
         stat_card_config = []
         if user and getattr(user, 'is_authenticated', True):
             # Ensure user is a UserProfile instance if possible
