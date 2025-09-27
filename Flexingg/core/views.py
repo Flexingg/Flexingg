@@ -36,7 +36,6 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
 from django.views.decorators.csrf import csrf_exempt
-import json
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_POST
 
@@ -199,7 +198,6 @@ class HomeView(TemplateView):
                 vol_lbs = _workout_volume_lbs(workout)
                 # volume_k is thousands of lbs
                 vol_k = vol_lbs / 1000.0
-                print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
                 total_volume += vol_k
             context['todays_lifting_volume_k'] = total_volume
             # Calculate today's consumed calories from Health Connect nutrition (only for authenticated users)
@@ -353,10 +351,7 @@ class StatsAPIView(LoginRequiredMixin, View):
         # Lift volume
         # Calculate lifting volume robustly in lbs (diagnostics only — do not overwrite total_volume)
         total_volume = 0
-        print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
-        for workout in workouts:
-            print(workout.id, _workout_volume_lbs(workout) / 1000.0)
 
         # Consumed calories
         consumed = get_daily_consumed_calories(profile, target_date)
@@ -395,7 +390,6 @@ from django.utils import timezone
 from datetime import date, timedelta, datetime, timezone as dt_timezone
 from .forms import SignUpForm, LoginForm, ProfileForm, DataPriorityFormSet
 from django.views.decorators.csrf import csrf_exempt
-import json
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_POST
 
@@ -558,7 +552,6 @@ class HomeView(TemplateView):
                 vol_lbs = _workout_volume_lbs(workout)
                 # volume_k is thousands of lbs
                 vol_k = vol_lbs / 1000.0
-                print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
                 total_volume += vol_k
             context['todays_lifting_volume_k'] = total_volume
             # Calculate today's consumed calories from Health Connect nutrition (only for authenticated users)
@@ -713,13 +706,11 @@ class StatsAPIView(LoginRequiredMixin, View):
         # Lift volume
         # Calculate lifting volume robustly in lbs (diagnostics only — do not overwrite total_volume)
         total_volume = 0
-        print("Calculating lifting volume for date:", target_date)
         workouts = Workout.objects.filter(user=profile, start_time__date=target_date)
         for workout in workouts:
             vol_lbs = _workout_volume_lbs(workout)
             # volume_k is thousands of lbs
             vol_k = vol_lbs / 1000.0
-            print(f"Workout {workout.id} volume: {vol_k}k ({vol_lbs} lbs)")
             total_volume += vol_lbs
 
         # Consumed calories
@@ -828,7 +819,7 @@ class StatDetailAPIView(LoginRequiredMixin, View):
             value = 0.0
             if stat_key == 'cardio_burned':
                 # Sum calories from unified Workouts (prefer garmin but include all)
-                calories = Workout.objects.filter(user=user, start_time__date=d).aggregate(Sum(Cast('data__calories', FloatField())))['total'] or 0
+                calories = Workout.objects.filter(user=user, start_time__date=d).aggregate(total=Sum(Cast('data__calories', FloatField())))['total'] or 0
                 try:
                     value = float(calories)
                 except Exception:
@@ -872,7 +863,6 @@ class StatDetailAPIView(LoginRequiredMixin, View):
                 'date': d.isoformat(),
                 'value': None if value is None else (float(value) if isinstance(value, (int, float, Decimal)) else value)
             })
-        print(points)
 
         # Provide list payload for stat types that require detailed lists
         if stat_key == 'cardio_burned':
@@ -1574,7 +1564,6 @@ class ProfileView(LoginRequiredMixin, TemplateView):
                     'sort_date': sleep.start_time if sleep.start_time.tzinfo else timezone.make_aware(sleep.start_time),
                     'details': details
                 })
-
         # Add recent water intake entries
         recent_water = DailyWater.objects.filter(user=user).order_by('-date')[:2]
         for water in recent_water:

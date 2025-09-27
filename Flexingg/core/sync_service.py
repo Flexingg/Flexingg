@@ -235,7 +235,6 @@ def sync_user_data(user_id, bypass_debounce=False):
                         while retry_count <= max_retries and daily_steps_data is None:
                             try:
                                 daily_steps_data = garth.client.connectapi(url)
-                                logger.info(f"Successfully fetched steps data for {current_date}")
                             except GarthHTTPError as api_err:
                                 if api_err.status_code in [401, 403]:
                                     if retry_count == 0:

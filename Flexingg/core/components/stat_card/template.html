@@ -8,13 +8,17 @@
         {% for card in stat_cards %}
         <div class="pixel-border bg-[#2a2a2a] p-3 text-center stat-card-clickable" data-stat-key="{{ card.key }}">
             <p class="font-pixel text-sm {{ card.color }}">{{ card.title }}</p>
-            <p id="{{ card.id }}" class="font-pixel text-2xl text-white mt-2">
+            <p id="{{ card.id }}" class="font-pixel text-xl text-white mt-2">
                 {% if card.key == 'lifting_volume' %}
                     {{ card.value|default:0|floatformat:1 }}k
                 {% elif card.key == 'water_intake' or card.key == 'bodyweight' %}
-                    {{ card.value|default:'N/A' }}
+                    {% if card.value == 'N/A' %}
+                        N/A
+                    {% else %}
+                        {{ card.value|floatformat:1|intcomma }}
+                    {% endif %}
                 {% else %}
-                    {{ card.value|default:0|intcomma }}
+                    {{ card.value|default:0|floatformat:1|intcomma }}
                 {% endif %}
                 {% if card.key == 'bodyweight' and card.value != 'N/A' %} lbs{% endif %}
             </p>
@@ -25,7 +29,7 @@
 </div>
 
 <!-- Modal Placeholder -->
-<div id="stat-detail-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+<div id="stat-detail-modal" class="fixed inset-0 bg-black bg-opacity-100 hidden items-center justify-center z-50">
     <div class="pixel-border bg-[#2a2a2a] p-6 w-11/12 max-w-3xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4">
             <h2 id="modal-title" class="font-pixel text-xl text-white"></h2>
@@ -108,14 +112,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (value === null || value === undefined) {
             return key === 'bodyweight_lbs' ? 'N/A' : '0';
         }
+        const num = Number(value);
+        // Use Intl.NumberFormat to keep thousands separators and cap decimals to 1 (tenths)
+        const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
         if (key === 'volume_k') {
-            return Number(value).toFixed(1) + 'k lbs';
+            // Ensure one decimal for volume_k then append k lbs
+            return nf.format(Number(num.toFixed(1))) + 'k lbs';
         }
         if (key === 'water_ounces' || key === 'bodyweight_lbs') {
-            const formatted = Number(value).toFixed(1);
+            const formatted = nf.format(Number(num.toFixed(1)));
             return key === 'bodyweight_lbs' ? formatted + ' lbs' : formatted;
         }
-        return Number(value).toLocaleString();
+        // General numeric formatting with at most one decimal place and thousands separators
+        return nf.format(num);
     }
 
     function updateDisplay(data) {
@@ -198,6 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     modalCloseBtn.addEventListener('click', () => {
         modal.classList.add('hidden');
+        // Re-enable page scrolling when modal closes
+        document.body.classList.remove('overflow-hidden');
     });
 
     function clearModal() {
@@ -365,7 +376,9 @@ document.addEventListener('DOMContentLoaded', function() {
         let target = e.target.closest('.stat-card-clickable');
         if (target) {
             const statKey = target.dataset.statKey;
+            // Show modal and prevent background/page scrolling while modal is open
             modal.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             clearModal();
             // fetch and render detail
             fetchDetailAndRender(statKey);

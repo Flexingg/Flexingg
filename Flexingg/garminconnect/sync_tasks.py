@@ -53,7 +53,6 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
                 while retry_count <= max_retries and daily_steps_data is None:
                     try:
                         daily_steps_data = garth.client.connectapi(url)
-                        logger.info(f"Successfully fetched steps data for {current_date} using primary endpoint.")
                     except GarthHTTPError as api_err:
                         if api_err.status_code in [401, 403]:
                             if retry_count == 0:
@@ -76,7 +75,6 @@ def garmin_sync_steps_task(user_id, start_date, end_date):
                             alt_url = f"/usersummary-service/usersummary/daily/{current_date.isoformat()}"
                             try:
                                 daily_steps_data = garth.client.connectapi(alt_url)
-                                logger.info(f"Successfully fetched steps data for {current_date} using alt endpoint.")
                             except GarthHTTPError as alt_err:
                                 if alt_err.status_code in [401, 403]:
                                     logger.warning(f"Auth error on alt steps API for {current_date}, but refresh already attempted.")

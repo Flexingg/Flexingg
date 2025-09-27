@@ -42,6 +42,18 @@
       ]
     }
   ],
+  "screenshots": [
+    {
+      "src": "/static/screenshots/screenshot-1.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/static/screenshots/base-screenshot-2.png",
+      "sizes": "1280x720",
+      "type": "image/png"
+    }
+  ],
   "prefer_related_applications": false,
   "related_applications": [],
   "display_override": ["standalone", "minimal-ui"],
