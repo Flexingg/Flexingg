@@ -238,7 +238,7 @@ class ColorPreferences(models.Model):
         
     def get_error_color(self): 
         return self.error
-                
+              
     def __str__(self):  
         return f"Color Preferences for {self.user.username}"
 
@@ -369,19 +369,37 @@ def create_color_preferences(sender, instance, created, **kwargs):
 @receiver(post_save, sender=UserProfile)
 def create_default_data_priorities(sender, instance, created, **kwargs):
     if created:
-        # Workout priorities: Liftosaur primary
+        # Workout priorities: Liftosaur primary, Garmin secondary, Health Connect tertiary
         DataPriority.objects.get_or_create(
             user=instance,
             data_type='workout',
             source='liftosaur',
             defaults={'rank': 1}
         )
-        # Sleep priorities: Health Connect primary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='workout',
+            source='garmin',
+            defaults={'rank': 2}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='workout',
+            source='healthconnect',
+            defaults={'rank': 3}
+        )
+        # Sleep priorities: Health Connect primary, Garmin secondary
         DataPriority.objects.get_or_create(
             user=instance,
             data_type='sleep',
             source='healthconnect',
             defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='sleep',
+            source='garmin',
+            defaults={'rank': 2}
         )
         # Steps priorities: Garmin primary, Health Connect secondary
         DataPriority.objects.get_or_create(
@@ -396,7 +414,6 @@ def create_default_data_priorities(sender, instance, created, **kwargs):
             source='healthconnect',
             defaults={'rank': 2}
         )
-
         # Water priorities: Health Connect primary, Garmin secondary
         DataPriority.objects.get_or_create(
             user=instance,
@@ -408,6 +425,19 @@ def create_default_data_priorities(sender, instance, created, **kwargs):
             user=instance,
             data_type='water',
             source='garmin',
+            defaults={'rank': 2}
+        )
+        # Bodyweight priorities: Garmin primary, Health Connect secondary
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='bodyweight',
+            source='garmin',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=instance,
+            data_type='bodyweight',
+            source='healthconnect',
             defaults={'rank': 2}
         )
 
@@ -430,7 +460,13 @@ class ConnectedService(models.Model):
 
 class DataPriority(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='data_priorities')
-    data_type = models.CharField(max_length=50, choices=[('workout', 'Workout'), ('sleep', 'Sleep'), ('steps', 'Steps'), ('water', 'Water')])
+    data_type = models.CharField(max_length=50, choices=[
+        ('workout', 'Workout'),
+        ('sleep', 'Sleep'),
+        ('steps', 'Steps'),
+        ('water', 'Water'),
+        ('bodyweight', 'Bodyweight')
+    ])
     source = models.CharField(max_length=50, choices=[('garmin', 'Garmin'), ('healthconnect', 'Health Connect'), ('liftosaur', 'Liftosaur')])
     rank = models.IntegerField(help_text="Priority rank (1 is highest)")
 
@@ -462,65 +498,6 @@ class Workout(models.Model):
 
     def __str__(self):
         return f"Workout for {self.user.username} from {self.source} on {self.start_time.date()}"
-
-    def get_total_volume(self, unit='lb'):
-        """
-        Robustly compute total lifting volume for this workout.
-        For Liftosaur-source workouts this parses self.data (entries -> sets/warmupSets)
-        and sums (completedWeight.value * completedReps) across all completed sets.
-        Accepts both camelCase and snake_case keys and converts kg -> lb as needed.
-        """
-        total = 0.0
-        try:
-            if self.source == 'liftosaur' and isinstance(self.data, dict):
-                entries = self.data.get('entries') or self.data.get('exercises') or []
-                for entry in entries:
-                    if not isinstance(entry, dict):
-                        continue
-                    # handle working sets and warmup sets
-                    for set_key in ('sets', 'warmupSets', 'warmup_sets', 'warmups'):
-                        for s in entry.get(set_key, []) or []:
-                            # reps: support camelCase and snake_case
-                            reps = s.get('completedReps') or s.get('completed_reps') or s.get('reps') or 0
-                            if reps is None:
-                                reps = 0
-                            # prefer completedWeight, fall back to weight
-                            weight_obj = s.get('completedWeight') or s.get('completed_weight') or s.get('weight') or {}
-                            weight_value = 0
-                            weight_unit = s.get('weightUnit') or s.get('completedWeight', {}).get('unit') if isinstance(s.get('completedWeight'), dict) else (s.get('weightUnit') or 'lb')
-                            if isinstance(weight_obj, dict):
-                                weight_value = weight_obj.get('value') or weight_obj.get('weight') or 0
-                                weight_unit = weight_obj.get('unit') or weight_unit or 'lb'
-                            else:
-                                try:
-                                    weight_value = float(weight_obj)
-                                except Exception:
-                                    weight_value = 0
-                            # skip sets without meaningful values
-                            try:
-                                w = float(weight_value)
-                                r = float(reps)
-                            except Exception:
-                                continue
-                            if w <= 0 or r <= 0:
-                                continue
-                            if str(weight_unit).lower().startswith('kg'):
-                                w *= 2.20462
-                            total += w * r
-            # Fallback: if no liftosaur data parsed, try unified_exercises relation
-            if total == 0.0:
-                ex_qs = getattr(self, 'unified_exercises', None)
-                if ex_qs is not None and hasattr(ex_qs, 'all'):
-                    for ex in ex_qs.all():
-                        if hasattr(ex, 'get_volume'):
-                            total += float(ex.get_volume('lb') or 0)
-        except Exception:
-            # On any parsing error, do not raise — return 0.0 (safe fallback for analytics)
-            total = 0.0
-
-        if unit == 'kg':
-            total /= 2.20462
-        return total
 
 
 class UnifiedWorkoutExercise(models.Model):

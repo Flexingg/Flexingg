@@ -16,7 +16,7 @@ class HCGatewayClient:
     #     'speed', 'steps', 'stepsCadence', 'totalCaloriesBurned', 'vo2Max', 'weight', 'wheelchairPushes'
     # ]
 
-    METHODS = ['activeCaloriesBurned', 'hydration', 'nutrition', 'sleepSession', 'steps']
+    METHODS = ['activeCaloriesBurned', 'hydration', 'nutrition', 'sleepSession', 'steps', 'weight']
     
     def __init__(self, auth_data=None):
         self.base_url = os.environ.get('HC_CONNECT_URL', 'http://localhost:6644') + '/api/v2'

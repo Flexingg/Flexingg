@@ -9,7 +9,7 @@ from .currency_service import calculate_cardio_coins, calculate_gym_gems, calcul
 logger = logging.getLogger(__name__)
 
 
-def process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data):
+def process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data, garmin_sleep=None):
     """
     Process fetched data and save to unified models following priorities.
     Returns a summary dict.
@@ -38,6 +38,7 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
     garmin_activities = _ensure_list(garmin_activities)
     garmin_steps = _ensure_list(garmin_steps)
     garmin_hydration = _ensure_list(garmin_hydration)
+    garmin_sleep = _ensure_list(garmin_sleep)
     liftosaur_workouts = []
     if isinstance(liftosaur_data, list):
         liftosaur_workouts = liftosaur_data
@@ -270,6 +271,50 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                             else:
                                 Sleep.objects.create(user=user, source='healthconnect', **norm)
                             filled_dates.add(norm['start_time'].date())
+                elif source == 'garmin':
+                    from .normalization import normalize_garmin_sleep
+                    logger.info(f"Starting Garmin sleep processing for user {user.username}: {len(garmin_sleep)} records found")
+                    for sleep_record in garmin_sleep:
+                        try:
+                            norm = normalize_garmin_sleep(sleep_record)
+                        except Exception as e:
+                            logger.exception(f"Exception normalizing Garmin sleep for user {user.username}: {e}")
+                            norm = None
+                        if not norm:
+                            logger.debug("normalize_garmin_sleep returned None; skipping record")
+                            continue
+                        st_time = norm.get('start_time')
+                        st_date = st_time.date() if st_time else None
+                        if st_date and st_date in filled_dates:
+                            logger.debug(f"Skipping Garmin sleep {norm.get('source_id')} due to filled date {st_date}")
+                            continue
+                        existing = Sleep.objects.filter(user=user, source='garmin', source_id=norm.get('source_id')).first()
+                        if existing:
+                            needs_update = (
+                                (norm.get('start_time') and existing.start_time != norm.get('start_time')) or
+                                (norm.get('end_time') and existing.end_time != norm.get('end_time')) or
+                                existing.data != norm.get('data')
+                            )
+                            if needs_update:
+                                if norm.get('start_time'):
+                                    existing.start_time = norm.get('start_time')
+                                if norm.get('end_time'):
+                                    existing.end_time = norm.get('end_time')
+                                existing.data = norm.get('data')
+                                existing.save()
+                                logger.info(f"Updated existing Garmin sleep {existing.source_id} for user {user.username}")
+                        else:
+                            # Ensure required times exist; provide safe fallback if missing
+                            from django.utils import timezone
+                            from datetime import timedelta
+                            if not norm.get('start_time'):
+                                norm['start_time'] = timezone.now()
+                            if not norm.get('end_time'):
+                                norm['end_time'] = norm['start_time'] + timedelta(hours=8)
+                            Sleep.objects.create(user=user, source='garmin', **norm)
+                            logger.info(f"Created Garmin sleep {norm.get('source_id')} for user {user.username}")
+                        if st_date:
+                            filled_dates.add(st_date)
             elif data_type == 'steps':
                 if source == 'garmin':
                     from .normalization import normalize_garmin_steps

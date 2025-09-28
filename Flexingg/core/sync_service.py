@@ -12,6 +12,8 @@ from garth.exc import GarthException, GarthHTTPError
 
 # Health Connect imports
 from healthconnect.utils import HCGatewayClient
+from healthconnect.data_processor import save_healthconnect_records
+from healthconnect.normalization_tasks import normalize_healthconnect_weight_data
 
 # Liftosaur imports
 from .liftosaur_client import liftosaur_download
@@ -91,6 +93,12 @@ def sync_user_data(user_id, bypass_debounce=False):
             source='healthconnect',
             defaults={'rank': 1}
         )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='sleep',
+            source='garmin',
+            defaults={'rank': 2}
+        )
 
         # Steps priorities: Garmin primary, Health Connect secondary
         DataPriority.objects.get_or_create(
@@ -120,6 +128,20 @@ def sync_user_data(user_id, bypass_debounce=False):
             defaults={'rank': 2}
         )
 
+        # Bodyweight priorities: Garmin primary, Health Connect secondary
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='bodyweight',
+            source='garmin',
+            defaults={'rank': 1}
+        )
+        DataPriority.objects.get_or_create(
+            user=user,
+            data_type='bodyweight',
+            source='healthconnect',
+            defaults={'rank': 2}
+        )
+
         # Refresh priorities after creation
         priorities = DataPriority.objects.filter(user=user).order_by('data_type', 'rank')
 
@@ -132,6 +154,7 @@ def sync_user_data(user_id, bypass_debounce=False):
 
     # 3. Fetch fresh data
     garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data = [], [], [], {}, {}
+    garmin_sleep = []
 
     try:
         garmin_auth_service = ConnectedService.objects.get(user=user, service_name='garmin')
@@ -158,6 +181,34 @@ def sync_user_data(user_id, bypass_debounce=False):
                 start_date = end_date - timedelta(days=30)
                 # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
                 garmin_steps = []
+                garmin_weights = []
+
+                # Add weight data fetching
+                try:
+                    # Compute days in the range (inclusive)
+                    if start_date and end_date:
+                        days = (end_date - start_date).days + 1
+                        end_str = end_date.isoformat()
+                        start_str = start_date.isoformat()
+                    else:
+                        # Fallback to a sensible default (last 365 days)
+                        days = 365
+                        end_dt = timezone.now().date()
+                        end_str = end_dt.isoformat()
+                        start_str = (end_dt - timedelta(days=days - 1)).isoformat()
+
+                    # Preferred: use garth.WeightData.list(end, days)
+                    try:
+                        garmin_weights = garth.WeightData.list(end=end_str, days=days)
+                    except Exception:
+                        # Fallback to the REST range endpoint used by garth internally
+                        weight_url = f"/weight-service/weight/range/{start_str}/{end_str}?includeAll=true"
+                        garmin_weights = garth.client.connectapi(weight_url)
+
+                    logger.info(f"Successfully fetched {len(garmin_weights) if garmin_weights else 0} weight records")
+                except Exception as weight_err:
+                    logger.warning(f"Failed to fetch weight data: {weight_err}")
+                    garmin_weights = []
                 
                 # Fetch hydration data day by day
                 garmin_hydration = []
@@ -167,7 +218,7 @@ def sync_user_data(user_id, bypass_debounce=False):
                 while current_date <= end_date and iteration_count < max_iterations:
                     try:
                         if current_date > timezone.localtime().date():
-                            
+                       
                             continue
 
                         url = f"/usersummary-service/stats/hydration/daily/{current_date.isoformat()}/{current_date.isoformat()}"
@@ -209,12 +260,14 @@ def sync_user_data(user_id, bypass_debounce=False):
 
                 
                 # Always increment the date, regardless of errors
+
                     current_date += timedelta(days=1)
                     iteration_count += 1
 
                 if iteration_count >= max_iterations:
                     logger.error(f"Hydration sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
 
+                
                 # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
                 current_date = start_date
                 max_iterations = 50  # Prevent infinite loops
@@ -271,20 +324,70 @@ def sync_user_data(user_id, bypass_debounce=False):
                 if iteration_count >= max_iterations:
                     logger.error(f"Steps sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
 
+                # Fetch sleep data using garth helper (preferred) and fallback to daily endpoint
+                try:
+                    # Compute days in range (inclusive)
+                    try:
+                        days = (end_date - start_date).days + 1
+                        end_str = end_date.isoformat()
+                        start_str = start_date.isoformat()
+                    except Exception:
+                        # fallback to 30 days if dates missing
+                        days = 30
+                        end_str = timezone.now().date().isoformat()
+                        start_str = (timezone.now().date() - timedelta(days=days - 1)).isoformat()
+
+                    try:
+                        # Preferred: use garth convenience method which returns structured objects
+                        garmin_sleep = garth.SleepData.list(end_str, days)
+                        logger.info(f"Fetched {len(garmin_sleep) if garmin_sleep else 0} Garmin sleep records via garth helper")
+                    except Exception:
+                        # Fallback: query dailySleepData endpoint day-by-day
+                        g_sleep = []
+                        current_date = start_date
+                        iteration_count = 0
+                        max_iterations = max(50, days + 5)
+                        while current_date <= end_date and iteration_count < max_iterations:
+                            try:
+                                if current_date > timezone.localtime().date():
+                                    current_date += timedelta(days=1)
+                                    iteration_count += 1
+                                    continue
+                                url = f"/wellness-service/wellness/dailySleepData/{garth.client.username}?date={current_date.isoformat()}&nonSleepBufferMinutes=60"
+                                resp = None
+                                try:
+                                    resp = garth.client.connectapi(url)
+                                except Exception as e:
+                                    logger.debug(f"Garmin sleep daily endpoint failed for {current_date}: {e}")
+                                    resp = None
+                                if resp:
+                                    # The REST endpoint may return a dict for that day
+                                    g_sleep.append(resp)
+                            except Exception as inner_e:
+                                logger.warning(f"Error fetching Garmin sleep for {current_date}: {inner_e}")
+                            current_date += timedelta(days=1)
+                            iteration_count += 1
+                        garmin_sleep = g_sleep
+                        logger.info(f"Fetched {len(garmin_sleep) if garmin_sleep else 0} Garmin sleep records via daily endpoint fallback")
+                except Exception as sleep_err:
+                    logger.warning(f"Failed to fetch Garmin sleep data: {sleep_err}")
                 logger.info(f"Successfully fetched Garmin data. Activities: {len(garmin_activities)}, Steps records: {len(garmin_steps)}, Hydration records: {len(garmin_hydration)}")
                 logger.info("Successfully fetched Garmin data")
             else:
                 logger.error("Failed to configure Garmin client")
                 garmin_activities = []
                 garmin_steps = []
+                garmin_sleep = []
     except ConnectedService.DoesNotExist:
         logger.warning("No Garmin service connected for user")
         garmin_activities = []
         garmin_steps = []
+        garmin_sleep = []
     except Exception as e:
         logger.error(f"Error fetching Garmin data: {e}")
         garmin_activities = []
         garmin_steps = []
+        garmin_sleep = []
 
     try:
         hc_auth = ConnectedService.objects.get(user=user, service_name='healthconnect')
@@ -303,6 +406,26 @@ def sync_user_data(user_id, bypass_debounce=False):
         if client.is_authenticated():
             hc_data = client.fetch_historical(days=30)
             logger.info("Successfully fetched Health Connect data")
+            # Persist raw Health Connect records into HealthConnectData model
+            try:
+                saved = save_healthconnect_records(user, hc_data)
+                logger.info(f"Saved {saved} Health Connect records for user {user.username}")
+            except Exception as e:
+                logger.exception(f"Failed to save Health Connect raw records for user {user.id}: {e}")
+            # Enqueue normalization task for weights (Health Connect) if weight data present
+            if isinstance(hc_data, dict) and 'weight' in hc_data and hc_data.get('weight'):
+                try:
+                    normalize_healthconnect_weight_data.delay(user.id)
+                except Exception:
+                    logger.exception(f"Failed to enqueue weight normalization for user {user.id}")
+            # Calculate date range for steps and hydration using steps data if available
+            start_date = end_date = timezone.now().date()
+            if 'steps' in hc_data and len(hc_data['steps']) > 0:
+                start_date = timezone.make_aware(datetime.fromisoformat(hc_data['steps'][0][0]))
+                end_date = timezone.make_aware(datetime.fromisoformat(hc_data['steps'][-1][0]))
+            if 'hydration' in hc_data and len(hc_data['hydration']) > 0:
+                start_date = min(start_date, timezone.make_aware(datetime.fromisoformat(hc_data['hydration'][0][0])))
+                end_date = max(end_date, timezone.make_aware(datetime.fromisoformat(hc_data['hydration'][-1][0])))
         else:
             logger.warning("Health Connect client not authenticated")
             hc_data = {}
@@ -334,7 +457,7 @@ def sync_user_data(user_id, bypass_debounce=False):
             logger.info(f"HealthConnect keys: {list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data)}; Liftosaur type: {type(liftosaur_data)}")
         except Exception:
             logger.debug("Failed to log pre-processing debug info for sync inputs")
-        summary = process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data)
+        summary = process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data, garmin_sleep)
         # If process_and_save_user_data returns a summary dict, log totals similarly to previous behavior
         if isinstance(summary, dict):
             logger.info(f"Processed summary for user {user.username}: {summary}")

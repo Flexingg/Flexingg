@@ -480,45 +480,11 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.log('Inline Health Connect button not found');
     }
-
-    // Garmin Connect button handler (added)
-    const garminConnectBtn = document.getElementById('garmin-connect-btn');
-    console.log('Inline Garmin Connect button:', garminConnectBtn);
-    if (garminConnectBtn) {
-        garminConnectBtn.addEventListener('click', function() {
-            console.log('Inline Garmin connect button clicked');
-            toggleGarminModal();
-        });
-    } else {
-        console.log('Inline Garmin connect button not found');
-    }
-
-    // Garmin modal toggle (inline)
-    window.toggleGarminModal = function() {
-        console.log('toggleGarminModal called inline');
-        const modal = document.getElementById('garmin-modal');
-        console.log('Inline Garmin modal element:', modal);
-        if (modal) {
-            modal.classList.toggle('hidden');
-            console.log('Inline Garmin hidden class toggled');
-        } else {
-            console.log('Inline Garmin modal not found');
-        }
-    };
-
-    // Close Garmin modal when clicking outside (inline)
-    const garminModal = document.getElementById('garmin-modal');
-    if (garminModal) {
-        garminModal.addEventListener('click', function(e) {
-            if (e.target === garminModal) {
-                garminModal.classList.add('hidden');
-                console.log('Inline Garmin modal closed by outside click');
-            }
-        });
-    } else {
-        console.log('Inline Garmin modal not found on DOM load');
-    }
-
+ 
+    // Garmin handlers removed from inline script to avoid duplicate definitions.
+    // The robust toggleGarminModal and listeners are provided by the external integrations_section script.
+    console.log('Garmin handlers delegated to external integrations script');
+ 
     // Health Connect modal toggle
     window.toggleHCModal = function() {
         console.log('toggleHCModal called');

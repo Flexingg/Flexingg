@@ -1,8 +1,10 @@
 from celery import shared_task
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import logging
-import decimal
+import json
 from django.db import transaction
+import re
+import decimal
 
 from core.models import BodyWeight, DailySteps, NutritionEntry, DailyWater, Sleep
 from .models import HealthConnectData
@@ -24,6 +26,76 @@ def normalize_healthconnect_weight_data(user_id):
 
         normalized_count = 0
 
+        def _parse_weight_to_kg(raw):
+            """
+            Accepts various shapes for weight values and returns a Decimal in kilograms or None.
+            Handles:
+              - numeric types (int/float/Decimal)
+              - numeric strings ("70", "70.5")
+              - strings with units ("155 lb", "155lbs", "70 kg")
+              - dicts like {'value': 70, 'unit': 'kg'} or {'inKilograms': 70}
+            Returns: Decimal (kg) or None
+            """
+            from decimal import InvalidOperation
+            import re
+
+            if raw is None:
+                return None
+
+            # Numeric types
+            if isinstance(raw, (int, float, Decimal)):
+                try:
+                    return Decimal(str(raw))
+                except InvalidOperation:
+                    return None
+
+            # Dict shapes
+            if isinstance(raw, dict):
+                # Common Health Connect shapes
+                if 'inKilograms' in raw:
+                    try:
+                        return Decimal(str(raw['inKilograms']))
+                    except InvalidOperation:
+                        return None
+                if 'kg' in raw:
+                    try:
+                        return Decimal(str(raw['kg']))
+                    except InvalidOperation:
+                        return None
+                # value + unit
+                if 'value' in raw:
+                    val = raw['value']
+                    unit = (raw.get('unit') or '').lower()
+                    try:
+                        dval = Decimal(str(val))
+                    except InvalidOperation:
+                        return None
+                    if 'lb' in unit:
+                        return (dval / Decimal('2.20462'))
+                    return dval
+                # last-resort: try to stringify and extract number
+                raw_str = json.dumps(raw) if not isinstance(raw, str) else raw
+            else:
+                raw_str = str(raw).strip()
+
+            # Strings: extract first numeric token and detect unit
+            m = re.search(r'([-+]?\d{1,3}(?:[,\d]*\d)?(?:\.\d+)?)', raw_str)
+            if not m:
+                return None
+            num_str = m.group(1).replace(',', '')
+            try:
+                val = Decimal(num_str)
+            except InvalidOperation:
+                return None
+
+            # Detect unit keywords in the remainder of the string
+            low = raw_str.lower()
+            if 'lb' in low or 'lbs' in low or 'pound' in low:
+                # convert pounds to kg
+                return (val / Decimal('2.20462'))
+            # assume kilograms otherwise
+            return val
+
         with transaction.atomic():
             for record in weight_records:
                 # Check if already normalized
@@ -36,14 +108,35 @@ def normalize_healthconnect_weight_data(user_id):
 
                 # Extract weight data from JSON
                 data = record.data
-                weight_kg = data.get('weight')
+                weight_raw = data.get('weight')
+                weight_kg = None
+                try:
+                    weight_kg = _parse_weight_to_kg(weight_raw)
+                except Exception as e:
+                    logger.warning(f"Failed to parse weight for record {record.record_id}: {e}; raw={weight_raw}")
 
-                if not weight_kg:
-                    logger.warning(f"No weight data in record {record.record_id}")
+                if weight_kg is None:
+                    logger.warning(f"No parsable weight data in record {record.record_id}; raw={weight_raw}")
                     continue
 
-                # Convert kg to lbs
-                weight_lbs = (Decimal(str(weight_kg)) * Decimal('2.20462')).quantize(Decimal('0.01'))
+                # Convert kg to lbs (keep two decimal places)
+                try:
+                    weight_lbs = (Decimal(weight_kg) * Decimal('2.20462')).quantize(Decimal('0.01'))
+                except Exception as e:
+                    logger.warning(f"Failed to convert weight to lbs for record {record.record_id}: {e}; kg={weight_kg}")
+                    continue
+
+                # Ensure values placed into the JSON/data field are JSON-serializable
+                try:
+                    original_weight_kg_serialized = float(weight_kg) if isinstance(weight_kg, Decimal) else weight_kg
+                except Exception:
+                    # Fallback to string representation if float conversion fails
+                    original_weight_kg_serialized = str(weight_kg)
+
+                try:
+                    weight_lbs_for_data = float(weight_lbs) if isinstance(weight_lbs, Decimal) else weight_lbs
+                except Exception:
+                    weight_lbs_for_data = str(weight_lbs)
 
                 BodyWeight.objects.create(
                     user_id=user_id,
@@ -52,7 +145,8 @@ def normalize_healthconnect_weight_data(user_id):
                     datetime=record.start_time,
                     weight_lbs=weight_lbs,
                     data={
-                        'original_weight_kg': weight_kg,
+                        'original_weight_kg': original_weight_kg_serialized,
+                        'weight_lbs': weight_lbs_for_data,
                         'healthconnect_data': data,
                         'app_source': record.app_source
                     }
@@ -64,7 +158,13 @@ def normalize_healthconnect_weight_data(user_id):
 
     except Exception as e:
         logger.error(f"Error normalizing Health Connect weight data for user {user_id}: {str(e)}")
-        return {'status': 'error', 'message': str(e)}
+        # Return the exception class names for clarity
+        try:
+            import traceback
+            tb = traceback.format_exc()
+        except Exception:
+            tb = str(e)
+        return {'status': 'error', 'message': str(e), 'trace': tb}
 
 
 @shared_task

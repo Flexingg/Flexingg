@@ -268,79 +268,127 @@ def garmin_sync_weight_task(user_id, start_date=None, end_date=None):
             logger.error(f"Failed to configure Garmin client for user {user.id}")
             return {'success': False, 'error': 'Client configuration failed'}
 
-        # Build URL for weight data
-        url = "/weight-service/user/weight"
-
-        # Fetch weight data with retry on auth error
+        # Try to fetch weight data. Prefer garth helper; fall back to raw endpoint.
         weight_data = None
-        retry_count = 0
-        max_retries = 1
-        while retry_count <= max_retries and weight_data is None:
+        try:
+            # Use date range when available for WeightData.list
+            if start_date and end_date:
+                days = (end_date - start_date).days + 1
+            else:
+                days = 365
             try:
-                weight_data = garth.client.connectapi(url)
-                logger.info(f"Successfully fetched weight data for user {user.id}.")
-            except GarthHTTPError as api_err:
-                if api_err.status_code in [401, 403]:
-                    if retry_count == 0:
-                        logger.warning(f"Auth error on weight API, attempting refresh and retry.")
-                        if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
-                            retry_count += 1
-                            continue
+                weight_data = garth.WeightData.list(start_date.isoformat() if start_date else None, days)
+            except Exception:
+                # Fallback to raw REST endpoint
+                weight_url = "/weight-service/user/weight"
+                weight_data = garth.client.connectapi(weight_url)
+            logger.info(f"Successfully fetched {len(weight_data) if weight_data else 0} weight entries for user {user.id}.")
+        except GarthHTTPError as api_err:
+            status = getattr(api_err, 'status_code', None)
+            # If endpoint not present for this account, skip gracefully
+            if status == 404:
+                logger.info(f"Weight endpoint not available for user {user.id} (404). Skipping weight sync.")
+                weight_data = []
+            elif status in [401, 403]:
+                # Try one refresh attempt then retry using the same logic
+                logger.warning(f"Auth error on weight API for user {user.id}, attempting refresh and retry.")
+                if refresh_oauth2_only(garmin_auth) and configure_garmin_client(garmin_auth):
+                    try:
+                        if start_date and end_date:
+                            days = (end_date - start_date).days + 1
                         else:
-                            logger.error(f"Token refresh failed during weight sync")
-                            return {'success': False, 'error': 'Token refresh failed after auth error'}
-                    else:
-                        logger.error(f"Retry failed after refresh for weight API")
-                        return {'success': False, 'error': 'API retry failed'}
+                            days = 365
+                        try:
+                            weight_data = garth.WeightData.list(start_date.isoformat() if start_date else None, days)
+                        except Exception:
+                            weight_url = "/weight-service/user/weight"
+                            weight_data = garth.client.connectapi(weight_url)
+                        logger.info(f"Successfully fetched {len(weight_data) if weight_data else 0} weight entries after refresh for user {user.id}.")
+                    except GarthHTTPError as retry_err:
+                        logger.error(f"Retry after refresh failed for weight API for user {user.id}: {retry_err}")
+                        return {'success': False, 'error': 'Token refresh failed or weight endpoint unavailable after retry'}
                 else:
-                    raise
-            except Exception as api_err:
-                logger.error(f"Unexpected error on weight API: {api_err}")
+                    logger.error(f"Token refresh failed during weight sync for user {user.id}")
+                    return {'success': False, 'error': 'Token refresh failed after auth error'}
+            else:
+                logger.error(f"Unexpected HTTP error on weight API for user {user.id}: {api_err}")
                 raise
-            retry_count += 1 if weight_data is None else 0
+        except Exception as e:
+            logger.error(f"Unexpected error fetching weight data for user {user.id}: {e}")
+            raise     
 
         if not weight_data:
             logger.info(f"No weight data found for user {user.id}")
             return {'success': True, 'weights_synced': 0}
 
-        # Process weight data
+        # Process weight data - support both garth.WeightData objects and raw dicts
         from .models import GarminBodyWeight
         for weight_entry in weight_data:
             try:
-                weight_kg = weight_entry.get('weight')
-                datetime_str = weight_entry.get('date')
+                # Detect garth.WeightData-like object
+                if hasattr(weight_entry, 'weight') and hasattr(weight_entry, 'datetime_utc'):
+                    raw_weight = getattr(weight_entry, 'weight', None)
+                    weight_dt = getattr(weight_entry, 'datetime_utc', None)
+                    source_type = getattr(weight_entry, 'source_type', None) or getattr(weight_entry, 'sourceType', 'garmin_scale')
+                    raw_json = weight_entry.__dict__ if hasattr(weight_entry, '__dict__') else None
+                else:
+                    # Expect a dict from the raw REST endpoint
+                    raw_weight = weight_entry.get('weight')
+                    source_type = weight_entry.get('sourceType') or weight_entry.get('source_type') or 'garmin_scale'
+                    raw_json = weight_entry
 
-                if not weight_kg or not datetime_str:
-                    logger.warning(f"Skipping weight entry with missing data: {weight_entry}")
+                    # Many Garmin weight REST responses include 'timestamp_gmt' in ms or 'date' ISO string
+                    weight_dt = None
+                    if weight_entry.get('timestamp_gmt'):
+                        try:
+                            ts = float(weight_entry.get('timestamp_gmt'))
+                            weight_dt = datetime.fromtimestamp(ts / 1000.0, tz=dt_timezone.utc)
+                        except Exception:
+                            weight_dt = None
+                    elif weight_entry.get('date'):
+                        try:
+                            weight_dt = datetime.fromisoformat(str(weight_entry.get('date')).replace('Z', '+00:00'))
+                        except Exception:
+                            weight_dt = None
+
+                # Validate presence
+                if raw_weight is None or weight_dt is None:
+                    logger.warning(f"Skipping weight entry with missing data for user {getattr(user,'id','unknown')}: {weight_entry}")
                     continue
 
-                # Parse datetime
+                # Garmin returns weight in grams (per garth README). Convert to kg.
                 try:
-                    if isinstance(datetime_str, str):
-                        # Parse ISO format datetime string
-                        weight_datetime = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
-                    else:
-                        logger.warning(f"Unexpected datetime format: {datetime_str}")
-                        continue
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Invalid datetime format for weight entry: {datetime_str} - {e}")
+                    raw_weight_val = float(raw_weight)
+                except Exception:
+                    logger.warning(f"Invalid weight value, skipping: {raw_weight}")
                     continue
 
-                # Create or update weight record
+                # Heuristic: if value looks like grams (>1000), divide by 1000 to get kg
+                if raw_weight_val > 1000:
+                    weight_kg = raw_weight_val / 1000.0
+                else:
+                    # already in kg (rare), accept as-is
+                    weight_kg = raw_weight_val
+
+                # Ensure timezone-aware datetime
+                if weight_dt.tzinfo is None:
+                    weight_dt = weight_dt.replace(tzinfo=dt_timezone.utc)
+
+                # Persist record
                 obj, created = GarminBodyWeight.objects.update_or_create(
                     user=user,
-                    datetime=weight_datetime,
+                    datetime=weight_dt,
                     defaults={
                         'weight_kg': weight_kg,
-                        'source_type': weight_entry.get('sourceType', 'garmin_scale'),
-                        'raw_data': weight_entry
+                        'source_type': source_type,
+                        'raw_data': raw_json
                     }
                 )
                 if created:
                     weights_synced += 1
 
             except Exception as weight_err:
-                logger.error(f"Error processing weight entry for user {user.id}: {weight_err}")
+                logger.error(f"Error processing weight entry for user {getattr(user,'id','unknown')}: {weight_err}", exc_info=True)
 
         # Update last sync
         garmin_auth.last_sync = timezone.now()

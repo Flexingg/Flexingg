@@ -273,6 +273,95 @@ def normalize_hc_hydration(hydration_record):
         return None
 
 
+def normalize_garmin_sleep(sleep_obj):
+    """
+    Accepts either a garth.SleepData (Pydantic-like) or a raw dict from the Connect API.
+    Returns dict {'source_id','start_time','end_time','data'} with timezone-aware datetimes,
+    or None on failure.
+    """
+    try:
+        # Try to locate the daily sleep DTO inside the object/dict
+        daily = None
+        if hasattr(sleep_obj, 'daily_sleep_dto'):
+            daily = getattr(sleep_obj, 'daily_sleep_dto')
+        elif isinstance(sleep_obj, dict) and 'dailySleepDTO' in sleep_obj:
+            daily = sleep_obj['dailySleepDTO']
+        elif isinstance(sleep_obj, dict):
+            # Common alternative keys
+            for k in ('dailySleepDTO', 'daily_sleep_dto', 'sleep', 'sleepData', 'daily_sleep'):
+                if k in sleep_obj:
+                    daily = sleep_obj[k]
+                    break
+
+        # If daily is still None, maybe the dict itself is the DTO
+        if not daily:
+            if isinstance(sleep_obj, dict) and any(k in sleep_obj for k in ('id', 'sleep_start_timestamp_gmt', 'sleep_end_timestamp_gmt', 'calendarDate')):
+                daily = sleep_obj
+            else:
+                logger.warning("No dailySleepDTO found in Garmin sleep object; skipping record.")
+                return None
+
+        # Extract an identifier
+        sid = None
+        if hasattr(daily, 'id'):
+            sid = getattr(daily, 'id')
+        elif isinstance(daily, dict):
+            sid = daily.get('id') or daily.get('samplePk') or daily.get('dailySleepId')
+
+        # Helper: convert numeric (s or ms), ISO string, or datetime to timezone-aware datetime
+        from django.utils import timezone
+        from datetime import datetime
+        def to_dt(v):
+            if v is None:
+                return None
+            if isinstance(v, datetime):
+                return timezone.make_aware(v) if v.tzinfo is None else v
+            # Try numeric epoch (ms or s)
+            try:
+                val = float(v)
+                # Heuristic: values > 1e11 are milliseconds
+                if abs(val) > 1e11:
+                    sec = val / 1000.0
+                else:
+                    sec = val
+                return datetime.fromtimestamp(sec, tz=timezone.utc)
+            except Exception:
+                # Try ISO parsing
+                try:
+                    s = str(v).replace('Z', '+00:00')
+                    dt = datetime.fromisoformat(s)
+                    return timezone.make_aware(dt) if dt.tzinfo is None else dt
+                except Exception:
+                    return None
+
+        # Common field names observed in garth examples
+        start_ts = None
+        end_ts = None
+        if hasattr(daily, 'sleep_start_timestamp_gmt'):
+            start_ts = getattr(daily, 'sleep_start_timestamp_gmt')
+        elif isinstance(daily, dict):
+            start_ts = daily.get('sleep_start_timestamp_gmt') or daily.get('sleepStartTimestampGmt') or daily.get('sleepStartTimestamp')
+
+        if hasattr(daily, 'sleep_end_timestamp_gmt'):
+            end_ts = getattr(daily, 'sleep_end_timestamp_gmt')
+        elif isinstance(daily, dict):
+            end_ts = daily.get('sleep_end_timestamp_gmt') or daily.get('sleepEndTimestampGmt') or daily.get('sleepEndTimestamp')
+
+        start_time = to_dt(start_ts)
+        end_time = to_dt(end_ts)
+
+        # Return normalized dict (store raw payload under 'data')
+        return {
+            'source_id': str(sid) if sid is not None else (str(int(start_time.timestamp())) if start_time else None),
+            'start_time': start_time,
+            'end_time': end_time,
+            'data': sleep_obj
+        }
+    except Exception as e:
+        logger.exception(f"normalize_garmin_sleep error: {e}")
+        return None
+
+
 __all__ = [
     'normalize_garmin_activity_to_workout',
     'normalize_liftosaur_workout',
@@ -282,4 +371,5 @@ __all__ = [
     'normalize_hc_steps',
     'normalize_garmin_hydration',
     'normalize_hc_hydration',
+    'normalize_garmin_sleep',
 ]

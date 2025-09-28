@@ -17,19 +17,37 @@ def populate_data_priorities(apps, schema_editor):
     UserProfile = apps.get_model('core', 'UserProfile')
     try:
         for user in UserProfile.objects.all():
-            # Workout priorities: Liftosaur primary
+            # Workout priorities: Liftosaur primary, Garmin secondary, Health Connect tertiary
             DataPriority.objects.get_or_create(
                 user=user,
                 data_type='workout',
                 source='liftosaur',
                 defaults={'rank': 1}
             )
-            # Sleep priorities: Health Connect primary
+            DataPriority.objects.get_or_create(
+                user=user,
+                data_type='workout',
+                source='garmin',
+                defaults={'rank': 2}
+            )
+            DataPriority.objects.get_or_create(
+                user=user,
+                data_type='workout',
+                source='healthconnect',
+                defaults={'rank': 3}
+            )
+            # Sleep priorities: Health Connect primary, Garmin secondary
             DataPriority.objects.get_or_create(
                 user=user,
                 data_type='sleep',
                 source='healthconnect',
                 defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=user,
+                data_type='sleep',
+                source='garmin',
+                defaults={'rank': 2}
             )
             # Steps priorities: Garmin primary, Health Connect secondary
             DataPriority.objects.get_or_create(
@@ -55,6 +73,19 @@ def populate_data_priorities(apps, schema_editor):
                 user=user,
                 data_type='water',
                 source='garmin',
+                defaults={'rank': 2}
+            )
+            # Bodyweight priorities: Garmin primary, Health Connect secondary
+            DataPriority.objects.get_or_create(
+                user=user,
+                data_type='bodyweight',
+                source='garmin',
+                defaults={'rank': 1}
+            )
+            DataPriority.objects.get_or_create(
+                user=user,
+                data_type='bodyweight',
+                source='healthconnect',
                 defaults={'rank': 2}
             )
         print("Successfully populated data priorities.")
