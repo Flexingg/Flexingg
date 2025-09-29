@@ -5,8 +5,103 @@ from decimal import Decimal
 
 from .models import Workout, Sleep, DailySteps, DailyWater, NutritionEntry
 from .currency_service import calculate_cardio_coins, calculate_gym_gems, calculate_xp_from_currencies
+import json
+import datetime as _dt
+import decimal as _decimal
+import uuid as _uuid
+
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_for_json(obj):
+    """
+    Recursively convert objects returned by external SDKs (e.g., garth.SleepData)
+    into plain Python structures that are JSON-serializable (dicts, lists, primitives).
+    Converts datetimes -> ISO strings, Decimal -> float, UUID -> str.
+    Falls back to stringification for unknown objects.
+    """
+    def _sanitize(o):
+        # Primitives and None
+        if o is None:
+            return None
+        if isinstance(o, (str, int, float, bool)):
+            return o
+
+        # Decimal -> float
+        if isinstance(o, _decimal.Decimal):
+            try:
+                return float(o)
+            except Exception:
+                return str(o)
+
+        # datetime/date -> ISO string
+        if isinstance(o, (_dt.datetime, _dt.date)):
+            try:
+                return o.isoformat()
+            except Exception:
+                return str(o)
+
+        # UUID -> str
+        if isinstance(o, _uuid.UUID):
+            return str(o)
+
+        # Lists / tuples / sets
+        if isinstance(o, (list, tuple, set)):
+            return [_sanitize(x) for x in o]
+
+        # Dicts - sanitize keys and values
+        if isinstance(o, dict):
+            out = {}
+            for k, v in o.items():
+                try:
+                    out_key = k if isinstance(k, str) else str(k)
+                except Exception:
+                    out_key = str(k)
+                out[out_key] = _sanitize(v)
+            return out
+
+        # Pydantic/dataclass-like models
+        try:
+            if hasattr(o, 'dict') and callable(getattr(o, 'dict')):
+                return _sanitize(o.dict())
+            if hasattr(o, 'model_dump') and callable(getattr(o, 'model_dump')):
+                return _sanitize(o.model_dump())
+            if hasattr(o, 'to_dict') and callable(getattr(o, 'to_dict')):
+                return _sanitize(o.to_dict())
+        except Exception:
+            pass
+
+        # Fallback: try __dict__
+        try:
+            if hasattr(o, '__dict__'):
+                return _sanitize({k: getattr(o, k) for k in o.__dict__ if not k.startswith('_')})
+        except Exception:
+            pass
+
+        # Final fallback: string representation
+        try:
+            return str(o)
+        except Exception:
+            return None
+    return _sanitize(obj)
+
+
+def _ensure_json_serializable(obj):
+    """
+    Run the recursive sanitizer then round-trip via json.dumps/loads
+    to guarantee the resulting structure is JSON-serializable (no sdk objects).
+    Returns a JSON-native Python structure (dicts, lists, strings, numbers).
+    """
+    try:
+        safe = _serialize_for_json(obj)
+        dumped = json.dumps(safe, default=str)
+        return json.loads(dumped)
+    except Exception:
+        try:
+            return json.loads(json.dumps(str(obj)))
+        except Exception:
+            return None
 
 
 def process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data, garmin_sleep=None):
@@ -161,6 +256,11 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                         if not norm:
                             logger.debug(f"normalize_garmin_activity_to_workout returned None for activity (maybe unsupported format): {activity.get('activityId', '[no id]')}")
                             continue
+                        # Ensure normalized payload is JSON-serializable
+                        try:
+                            norm['data'] = _serialize_for_json(norm.get('data'))
+                        except Exception:
+                            norm['data'] = None
                         sid = norm.get('source_id')
                         if not sid:
                             logger.debug(f"Normalized Garmin activity missing source_id; skipping. Norm keys: {list(norm.keys()) if isinstance(norm, dict) else norm}")
@@ -175,13 +275,18 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                             if needs_update:
                                 existing.start_time = norm.get('start_time')
                                 existing.end_time = norm.get('end_time')
-                                existing.data = norm.get('data')
+                                try:
+                                    existing.data = _serialize_for_json(norm.get('data'))
+                                except Exception:
+                                    existing.data = None
                                 existing.save()
                                 updated_workouts.append(existing)
                                 logger.info(f"Updated existing Garmin workout {existing.source_id} for user {user.username}")
                         else:
                             try:
-                                w = Workout.objects.create(user=user, source='garmin', **norm)
+                                norm_safe = dict(norm)
+                                norm_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                w = Workout.objects.create(user=user, source='garmin', **norm_safe)
                                 created_workouts.append(w)
                                 logger.info(f"Created Garmin workout {sid} for user {user.username}")
                             except Exception as e:
@@ -205,6 +310,11 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                         if not norm:
                             logger.debug(f"normalize_liftosaur_workout returned None for workout: {workout.get('id', '[no id]')}")
                             continue
+                        # Ensure normalized payload is JSON-serializable
+                        try:
+                            norm['data'] = _serialize_for_json(norm.get('data'))
+                        except Exception:
+                            norm['data'] = None
                         st_date = norm.get('start_time').date() if norm.get('start_time') else None
                         if st_date and st_date in filled_dates:
                             logger.debug(f"Skipping Liftosaur workout {norm.get('source_id')} due to filled date {st_date}")
@@ -219,12 +329,17 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                             if needs_update:
                                 existing.start_time = norm.get('start_time')
                                 existing.end_time = norm.get('end_time')
-                                existing.data = norm.get('data')
+                                try:
+                                    existing.data = _serialize_for_json(norm.get('data'))
+                                except Exception:
+                                    existing.data = None
                                 existing.save()
                                 updated_workouts.append(existing)
                                 logger.debug(f"Updated existing Liftosaur workout {existing.source_id} for user {user.username}")
                         else:
-                            w = Workout.objects.create(user=user, source='liftosaur', **norm)
+                            norm_safe = dict(norm)
+                            norm_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                            w = Workout.objects.create(user=user, source='liftosaur', **norm_safe)
                             created_workouts.append(w)
                             logger.debug(f"Created Liftosaur workout {norm.get('source_id')} for user {user.username}")
                         if st_date:
@@ -244,10 +359,15 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                 if needs_update:
                                     existing.start_time = norm['start_time']
                                     existing.end_time = norm['end_time']
-                                    existing.data = norm['data']
+                                    try:
+                                        existing.data = _serialize_for_json(norm.get('data'))
+                                    except Exception:
+                                        existing.data = None
                                     existing.save()
                             else:
-                                w = Workout.objects.create(user=user, source='healthconnect', **norm)
+                                norm_safe = dict(norm)
+                                norm_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                w = Workout.objects.create(user=user, source='healthconnect', **norm_safe)
                                 created_workouts.append(w)
                             filled_dates.add(norm['start_time'].date())
             elif data_type == 'sleep':
@@ -266,10 +386,15 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                 if needs_update:
                                     existing.start_time = norm['start_time']
                                     existing.end_time = norm['end_time']
-                                    existing.data = norm['data']
+                                    try:
+                                        existing.data = _serialize_for_json(norm.get('data'))
+                                    except Exception:
+                                        existing.data = None
                                     existing.save()
                             else:
-                                Sleep.objects.create(user=user, source='healthconnect', **norm)
+                                norm_safe = dict(norm)
+                                norm_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                Sleep.objects.create(user=user, source='healthconnect', **norm_safe)
                             filled_dates.add(norm['start_time'].date())
                 elif source == 'garmin':
                     from .normalization import normalize_garmin_sleep
@@ -283,6 +408,11 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                         if not norm:
                             logger.debug("normalize_garmin_sleep returned None; skipping record")
                             continue
+                        # Ensure normalized payload is JSON-serializable (important: garth.SleepData objects can be present)
+                        try:
+                            norm['data'] = _serialize_for_json(norm.get('data'))
+                        except Exception:
+                            norm['data'] = None
                         st_time = norm.get('start_time')
                         st_date = st_time.date() if st_time else None
                         if st_date and st_date in filled_dates:
@@ -300,7 +430,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.start_time = norm.get('start_time')
                                 if norm.get('end_time'):
                                     existing.end_time = norm.get('end_time')
-                                existing.data = norm.get('data')
+                                try:
+                                    existing.data = _serialize_for_json(norm.get('data'))
+                                except Exception:
+                                    existing.data = None
                                 existing.save()
                                 logger.info(f"Updated existing Garmin sleep {existing.source_id} for user {user.username}")
                         else:
@@ -311,7 +444,14 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                 norm['start_time'] = timezone.now()
                             if not norm.get('end_time'):
                                 norm['end_time'] = norm['start_time'] + timedelta(hours=8)
-                            Sleep.objects.create(user=user, source='garmin', **norm)
+                            # Ensure data field is serializable before creating DB record
+                            try:
+                                norm['data'] = _serialize_for_json(norm.get('data'))
+                            except Exception:
+                                norm['data'] = None
+                            norm_safe = dict(norm)
+                            norm_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                            Sleep.objects.create(user=user, source='garmin', **norm_safe)
                             logger.info(f"Created Garmin sleep {norm.get('source_id')} for user {user.username}")
                         if st_date:
                             filled_dates.add(st_date)
@@ -320,6 +460,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                     from .normalization import normalize_garmin_steps
                     for day in garmin_steps:
                         norm = normalize_garmin_steps(day)
+                        try:
+                            norm['data'] = _serialize_for_json(norm.get('data'))
+                        except Exception:
+                            norm['data'] = None
                         if norm['date'] not in filled_dates:
                             existing = DailySteps.objects.filter(user=user, source='garmin', date=norm['date']).first()
                             if existing:
@@ -332,7 +476,9 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.data = norm['data']
                                     existing.save()
                             else:
-                                DailySteps.objects.create(user=user, source='garmin', date=norm['date'], steps=norm['steps'], data=norm['data'])
+                                ds_safe = dict(norm)
+                                ds_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                DailySteps.objects.create(user=user, source='garmin', date=ds_safe['date'], steps=ds_safe['steps'], data=ds_safe['data'])
                             filled_dates.add(norm['date'])
                 elif source == 'healthconnect' and 'steps' in hc_data:
                     from .normalization import normalize_hc_steps
@@ -350,7 +496,9 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.data = norm['data']
                                     existing.save()
                             else:
-                                DailySteps.objects.create(user=user, source='healthconnect', date=norm['date'], steps=norm['steps'], data=norm['data'])
+                                ds_safe = dict(norm)
+                                ds_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                DailySteps.objects.create(user=user, source='healthconnect', date=ds_safe['date'], steps=ds_safe['steps'], data=ds_safe['data'])
                             filled_dates.add(norm['date'])
             elif data_type == 'water':
                 logger.info(f"Starting water data sync for user {user.username}")
@@ -362,6 +510,10 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                     from .normalization import normalize_garmin_hydration
                     for day in garmin_hydration:
                         norm = normalize_garmin_hydration(day)
+                        try:
+                            norm['data'] = _serialize_for_json(norm.get('data'))
+                        except Exception:
+                            norm['data'] = None
                         if norm['date'] not in filled_dates:
                             existing = DailyWater.objects.filter(user=user, source='garmin', date=norm['date']).first()
                             if existing:
@@ -375,7 +527,9 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.save()
                             else:
                                 logger.debug(f"Creating new Garmin water record: date={norm['date']}, amount={norm['amount_ounces']}")
-                                DailyWater.objects.create(user=user, source='garmin', date=norm['date'], amount_ounces=norm['amount_ounces'], data=norm['data'])
+                                dw_safe = dict(norm)
+                                dw_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                DailyWater.objects.create(user=user, source='garmin', date=dw_safe['date'], amount_ounces=dw_safe['amount_ounces'], data=dw_safe['data'])
                             filled_dates.add(norm['date'])
                 elif source == 'healthconnect' and 'hydration' in hc_data:
                     from .normalization import normalize_hc_hydration
@@ -394,7 +548,9 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                     existing.save()
                             else:
                                 logger.debug(f"Creating new Health Connect water record: date={norm['date']}, amount={norm['amount_ounces']}")
-                                DailyWater.objects.create(user=user, source='healthconnect', **norm)
+                                dw_safe = dict(norm)
+                                dw_safe['data'] = _ensure_json_serializable(norm.get('data'))
+                                DailyWater.objects.create(user=user, source='healthconnect', date=dw_safe['date'], amount_ounces=dw_safe['amount_ounces'], data=dw_safe['data'])
                             filled_dates.add(norm['date'])
 
     # 5. Process nutrition data (no priority system yet, just process from Health Connect)
@@ -485,6 +641,7 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                         existing.data = data_dict
                         existing.save()
                 else:
+                    data_safe = _ensure_json_serializable(data_dict)
                     NutritionEntry.objects.create(
                         user=user,
                         source='healthconnect',
@@ -497,7 +654,7 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                         protein_grams=protein_grams,
                         fat_grams=fat_grams,
                         carbs_grams=carbs_grams,
-                        data=data_dict
+                        data=data_safe
                     )
                 nutrition_count += 1
             except Exception as e:
@@ -561,7 +718,7 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                 try:
                     award_result = award_currencies_and_xp(user, cardio_coins_amount, gym_gems_amount, garmin_activity=None)
                 except Exception:
-                    logger.exception(f"award_currencies_and_xp failed for user {user.username} workout {w.id}")
+                    logger.exception(f"Error in awarding currencies/XP for workout {w.id}")
                     award_result = None
 
                 # After awarding XP, check for level up and persist change
@@ -576,6 +733,6 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                     logger.exception(f"Error calculating/updating level for user {user.username}")
             except Exception as e:
                 logger.exception(f"Error while processing currency awards for workout {w.id}: {e}")
-    except Exception:
-        logger.exception("Error in awarding currencies/XP during sync")
+    except Exception as e:
+        logger.exception(f"Error in awarding currencies/XP during sync: {e}")
     return summary

@@ -1,79 +1,146 @@
-# Graph Data Categories Analysis - Plan
+# Sync Service Fix Plan
 
-## Executive Summary
+## Problem Analysis
 
-**Great news!** After thoroughly analyzing the codebase, I found that **all categories currently shown on the podium already have complete graph data support**. The system is fully implemented and working as intended.
+The sync service is failing to sync data from Liftosaur and Health Connect, with only partial Garmin data being retrieved. Analysis of the Celery logs and code reveals several critical issues:
 
-## Current Implementation Status
+### Issues Identified
 
-### ✅ **Fully Supported Categories (8 total)**
-All categories in the UI have complete backend and frontend support:
+1. **Missing Success Logging**: Several API calls lack proper success log statements
+   - Garmin activities fetch (line 179) - no success logging
+   - Garmin steps fetch - no success logging
+   - Other services have logs but they're not appearing in output
 
-| Category | Podium Display | Graph Data | Frontend UI | Special Logic |
-|----------|---------------|------------|-------------|---------------|
-| **steps** | ✅ Database aggregation | ✅ GarminDailySteps | ✅ Category button | Standard |
-| **lifts** | ✅ Manual volume calc | ✅ Workout volume | ✅ Category button | Custom calculation |
-| **calories** | ✅ Database aggregation | ✅ GarminActivity | ✅ Category button | Standard |
-| **coins** | ✅ Database aggregation | ✅ Transaction coins | ✅ Category button | Standard |
-| **gems** | ✅ Database aggregation | ✅ Transaction gems | ✅ Category button | Standard |
-| **sleep** | ✅ Manual hours calc | ✅ Sleep records | ✅ Category button | Custom calculation |
-| **consumed** | ✅ Manual calories calc | ✅ NutritionEntry | ✅ Category button | Custom calculation |
-| **water** | ✅ Manual ounces calc | ✅ DailyWater | ✅ Category button | Custom calculation |
+2. **Silent API Failures**: Only hydration data logs are visible, indicating other API calls are failing silently
+   - Garmin activities, steps, and sleep endpoints likely failing
+   - Health Connect authentication issues
+   - Liftosaur auth data problems
 
-### ✅ **Technical Implementation Complete**
-- **Backend**: `cumulative_data_api` handles all 8 categories with proper data aggregation
-- **Frontend**: Chart.js integration with loading states, legends, and tooltips
-- **Data Types**: Correct handling of cumulative vs daily metrics
-- **Time Granularity**: Adaptive (daily for Weekly/Monthly, weekly for All Time)
-- **Scope Support**: Global, Friends, and Group filtering all working
-- **URL Routing**: API endpoint properly configured
+3. **Poor Error Visibility**: Exception handling catches errors but logs them at insufficient levels for Celery log visibility
 
-### 🔍 **Only Gap Found**
-- `bodyweight` is defined in `DAILY_METRICS` constant but not exposed in UI (appears intentional)
+## Root Cause Analysis
 
-## Analysis Results
+### Garmin Issues
+- **Activities**: No success log statement makes it impossible to tell if this API call succeeds or fails
+- **Steps**: Day-by-day fetching occurs but no success confirmation per day or overall
+- **Sleep**: Has success logs but they're not appearing, indicating potential authentication or API issues
+- **Weights**: Shows "0 weight records" indicating the API call works but returns no data
 
-The current implementation is **comprehensive and complete**. Every category button in the UI has:
-1. ✅ Podium calculation logic in `social_main` function
-2. ✅ Graph data fetching in `cumulative_data_api` function  
-3. ✅ Frontend rendering with Chart.js
-4. ✅ Proper error handling and loading states
+### Health Connect Issues
+- **Authentication**: `client.is_authenticated()` likely returning `False`
+- **Data Fetching**: `client.fetch_historical()` likely failing silently
 
-## Next Steps Options
+### Liftosaur Issues
+- **Auth Data**: `user_id` or `session_token` likely missing or invalid
+- **Download Function**: `liftosaur_download()` likely failing
 
-Since the system is already complete, here are potential improvements we could consider:
+## Fix Strategy
 
-### Option 1: **Add New Categories**
-- Add `bodyweight` to the UI if desired
-- Add any other fitness metrics (heart rate, distance, etc.)
+### Phase 1: Improve Logging and Error Visibility
 
-### Option 2: **Performance Optimizations**
-- Add caching for frequently requested data
-- Optimize database queries for large datasets
-- Add data sampling for long time periods
+#### 1.1 Add Comprehensive Success Logging
+- Add clear info-level logs after each successful fetch (activities, steps, hydration, sleep, weights, liftosaur, healthconnect)
+- Log counts and sample identifiers to help trace what was returned
 
-### Option 3: **Code Quality Improvements**
-- Refactor repetitive calculation logic into reusable functions
-- Add comprehensive unit tests
-- Improve error handling with specific messages
+#### 1.2 Improve Error Logging Visibility
+- Log critical failures at ERROR level with exception traces
+- Convert some warnings to errors when a full data set cannot be fetched
 
-### Option 4: **UI/UX Enhancements**
-- Add more chart customization options
-- Improve mobile responsiveness
-- Add data export functionality
+#### 1.3 Add Debug Logging for Authentication Status
+- Log which ConnectedService entries exist and the high-level shape of auth_data
+- Log token expiry and refresh attempts/results
 
-### Option 5: **No Changes Needed**
-- Current implementation is complete and functional
-- All requirements from the original plan are satisfied
+### Phase 2: Fix Authentication and Configuration Issues
 
-## Questions for You
+#### 2.1 Garmin Authentication Improvements
+- Validate auth_data shape before use; log missing fields
+- Ensure refresh_oauth2_only returns expected structure; persist refreshed tokens
+- Add explicit checks and logs around configure_garmin_client() success/failure
 
-1. **Are you satisfied with the current implementation**, or would you like to make any improvements?
+#### 2.2 Health Connect Authentication Fixes
+- Normalize expiry parsing and ensure timezone-awareness
+- Log client authentication status before attempting fetch_historical()
+- Add retry and refresh flows for token expiry
 
-2. **Do you want to add any new categories** to the podium/graph (like bodyweight or other metrics)?
+#### 2.3 Liftosaur Authentication Validation
+- Validate presence of `user_id` and `session_token` and log informative warnings if missing
+- Catch and log exceptions inside liftosaur_download(), and surface errors to Celery logs
 
-3. **Are there any specific issues** you've noticed with the current graph functionality that need fixing?
+### Phase 3: Testing and Validation
 
-4. **Would you like to proceed with any optimizations** for performance, code quality, or user experience?
+#### 3.1 Individual Service Testing
+Create small test tasks or management commands to verify each service independently:
+- `test_garmin_connection(user_id)`
+- `test_healthconnect_connection(user_id)`
+- `test_liftosaur_connection(user_id)`
 
-The system is ready to use as-is, but I'm happy to make any improvements or additions you'd like!
+These should:
+- Report authentication status
+- Attempt one minimal fetch and log results
+- Return machine-readable status for CI/test harnesses
+
+#### 3.2 Sync Monitoring
+- Track metrics: per-service success/failure, records fetched per sync, error types
+- Add structured logs (JSON) for easier parsing
+
+#### 3.3 Log Analysis Tools
+- Add scripts or use existing log aggregation to detect:
+  - Persistent authentication failures
+  - Missing or zero-length responses
+  - Rate-limiting or API errors
+
+## Implementation Steps
+
+### Step 1: Immediate Logging Improvements
+- [ ] Add success logging for all Garmin API calls
+- [ ] Improve error logging visibility and include exception traces
+- [ ] Add authentication status logging for all services
+- [ ] Run a dev sync and validate logs in Celery output
+
+### Step 2: Authentication Fixes
+- [ ] Fix Garmin token refresh handling and persist refreshed tokens
+- [ ] Normalize and validate Health Connect expiry/token handling and refresh logic
+- [ ] Improve Liftosaur auth validation and error reporting
+- [ ] Add retries with exponential backoff for transient network/API errors
+
+### Step 3: Testing and Monitoring
+- [ ] Implement per-service test tasks/commands
+- [ ] Collect metrics for syncs and create dashboards/alerts
+- [ ] Add automated log parsing to detect common failures
+
+### Step 4: Performance and Robustness
+- [ ] Optimize API call batching (where supported)
+- [ ] Cache successful authentication context per-run to avoid redundant refreshes
+- [ ] Add circuit breaker behavior for persistently failing services
+- [ ] Ensure tasks are idempotent and safe to re-run
+
+## Success Metrics
+
+### Before Fix
+- Only hydration data visible in logs
+- No Health Connect or Liftosaur data
+- Unclear which services are failing
+
+### After Fix
+- All API calls logged with success/failure status
+- Clear authentication status for all services
+- Visible error messages for failed operations
+- Complete data fetching from all configured services
+
+## Rollback Plan
+If fixes cause regressions:
+1. Revert recent changes to logging first (safe to revert)
+2. Revert authentication logic changes if they cause breakage
+3. Restore previous version of sync service while preserving any non-breaking monitoring improvements
+
+## Timeline Estimate
+- Phase 1 (logging): 2–3 hours
+- Phase 2 (auth fixes): 4–6 hours
+- Phase 3 (testing & monitoring): 3–4 hours
+- Total: ~9–13 hours
+
+## Next Actions
+1. Implement Phase 1 logging improvements immediately in `Flexingg/core/sync_service.py`
+2. Deploy and run a dev sync; collect Celery logs
+3. Use logs to target Phase 2 fixes (token refresh, expiry, error handling)
+4. Implement per-service test tasks and monitoring

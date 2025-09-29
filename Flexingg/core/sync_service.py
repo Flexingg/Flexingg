@@ -35,7 +35,6 @@ from .data_processor import process_and_save_user_data
 
 logger = logging.getLogger(__name__)
 
-
 @shared_task
 def sync_user_data(user_id, bypass_debounce=False):
     logger.info(f"Sync started for user {user_id}")
@@ -165,184 +164,221 @@ def sync_user_data(user_id, bypass_debounce=False):
             logger.error("Invalid or missing Garmin auth data")
             garmin_activities = []
             garmin_steps = []
+            garmin_sleep = []
         else:
             # Try to refresh tokens if needed
             refreshed_auth = refresh_oauth2_only(auth_data)
             if refreshed_auth:
-                # Update the stored auth data if refresh was successful
-                garmin_auth_service.auth_data = refreshed_auth
-                garmin_auth_service.save()
-                auth_data = refreshed_auth
+                logger.info("Garmin tokens refreshed; updating stored auth_data")
+                try:
+                    garmin_auth_service.auth_data = refreshed_auth
+                    garmin_auth_service.save()
+                    auth_data = refreshed_auth
+                except Exception as persist_err:
+                    logger.exception(f"Failed to persist refreshed Garmin auth_data: {persist_err}")
+            else:
+                logger.debug("Garmin token refresh not performed or returned no update; using existing auth_data")
 
-            if configure_garmin_client(auth_data):
+            logger.info(f"Configuring Garmin client for user {user.username}")
+            configured = False
+            try:
+                configured = configure_garmin_client(auth_data)
+            except Exception as cfg_err:
+                logger.exception(f"Error configuring Garmin client: {cfg_err}")
+
+            if configured:
+                # Activities
                 activities_url = f"/activitylist-service/activities/search/activities?limit=999&start=0"
-                garmin_activities = garth.client.connectapi(activities_url)
+                try:
+                    garmin_activities = garth.client.connectapi(activities_url)
+                    logger.info(f"Successfully fetched {len(garmin_activities) if garmin_activities else 0} Garmin activities")
+                except Exception as act_err:
+                    logger.exception(f"Failed to fetch Garmin activities: {act_err}")
+
+                # Prepare date range
                 end_date = timezone.now().date()
                 start_date = end_date - timedelta(days=30)
-                # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
+
+                # Steps and weight containers
                 garmin_steps = []
                 garmin_weights = []
 
-                # Add weight data fetching
+                # Weight fetching (try helper then REST fallback)
                 try:
-                    # Compute days in the range (inclusive)
                     if start_date and end_date:
                         days = (end_date - start_date).days + 1
                         end_str = end_date.isoformat()
                         start_str = start_date.isoformat()
                     else:
-                        # Fallback to a sensible default (last 365 days)
                         days = 365
                         end_dt = timezone.now().date()
                         end_str = end_dt.isoformat()
                         start_str = (end_dt - timedelta(days=days - 1)).isoformat()
 
-                    # Preferred: use garth.WeightData.list(end, days)
                     try:
                         garmin_weights = garth.WeightData.list(end=end_str, days=days)
-                    except Exception:
-                        # Fallback to the REST range endpoint used by garth internally
-                        weight_url = f"/weight-service/weight/range/{start_str}/{end_str}?includeAll=true"
-                        garmin_weights = garth.client.connectapi(weight_url)
-
+                    except Exception as w_helper_err:
+                        logger.exception(f"Garmin WeightData.list() helper failed: {w_helper_err}")
+                        try:
+                            weight_url = f"/weight-service/weight/range/{start_str}/{end_str}?includeAll=true"
+                            garmin_weights = garth.client.connectapi(weight_url)
+                        except Exception as fallback_w_err:
+                            logger.exception(f"Failed to fetch Garmin weight data via fallback endpoint: {fallback_w_err}")
                     logger.info(f"Successfully fetched {len(garmin_weights) if garmin_weights else 0} weight records")
                 except Exception as weight_err:
-                    logger.warning(f"Failed to fetch weight data: {weight_err}")
+                    logger.exception(f"Failed to fetch weight data: {weight_err}")
                     garmin_weights = []
-                
-                # Fetch hydration data day by day
+
+                # Hydration day-by-day
                 garmin_hydration = []
                 current_date = start_date
-                max_iterations = 50  # Prevent infinite loops
+                max_iterations = 50
                 iteration_count = 0
                 while current_date <= end_date and iteration_count < max_iterations:
-                    try:
-                        if current_date > timezone.localtime().date():
-                       
-                            continue
+                    if current_date > timezone.localtime().date():
+                        logger.debug(f"Skipping future hydration date {current_date}")
+                        current_date += timedelta(days=1)
+                        iteration_count += 1
+                        continue
 
-                        url = f"/usersummary-service/stats/hydration/daily/{current_date.isoformat()}/{current_date.isoformat()}"
-                        daily_hydration_data = None
-                        retry_count = 0
-                        max_retries = 1
-                        while retry_count <= max_retries and daily_hydration_data is None:
-                            try:
-                                daily_hydration_data = garth.client.connectapi(url)
-                                logger.info(f"Successfully fetched hydration data for {current_date}")
-                            except GarthHTTPError as api_err:
-                                if api_err.status_code in [401, 403]:
-                                    if retry_count == 0:
-                                        logger.warning(f"Auth error on hydration API for {current_date}, attempting refresh and retry.")
-                                        if refresh_oauth2_only(auth_data) and configure_garmin_client(auth_data):
-                                            retry_count += 1
-                                            continue
+                    url = f"/usersummary-service/stats/hydration/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                    daily_hydration_data = None
+                    retry_count = 0
+                    max_retries = 1
+                    while retry_count <= max_retries and daily_hydration_data is None:
+                        try:
+                            daily_hydration_data = garth.client.connectapi(url)
+                            logger.info(f"Successfully fetched hydration data for {current_date}")
+                        except GarthHTTPError as api_err:
+                            if api_err.status_code in [401, 403]:
+                                if retry_count == 0:
+                                    logger.warning(f"Auth error on hydration API for {current_date}, attempting refresh and retry.")
+                                    try:
+                                        refreshed = refresh_oauth2_only(auth_data)
+                                        if refreshed:
+                                            # persist refreshed tokens if returned
+                                            try:
+                                                garmin_auth_service.auth_data = refreshed
+                                                garmin_auth_service.save()
+                                                auth_data = refreshed
+                                                logger.info("Persisted refreshed Garmin tokens during hydration retry")
+                                            except Exception as persist_err:
+                                                logger.exception(f"Failed to persist refreshed Garmin auth_data during hydration retry: {persist_err}")
+                                            if configure_garmin_client(auth_data):
+                                                retry_count += 1
+                                                continue
                                         else:
-                                            logger.error(f"Token refresh failed during hydration sync for {current_date}")
-                                            break
-                                    else:
-                                        logger.error(f"Retry failed after refresh for hydration API {current_date}")
+                                            if configure_garmin_client(auth_data):
+                                                retry_count += 1
+                                                continue
+                                    except Exception as refresh_err:
+                                        logger.exception(f"Failed to refresh Garmin tokens during hydration retry: {refresh_err}")
                                         break
-                                elif api_err.status_code == 404:
-                                    logger.debug(f"Hydration API not available for {current_date}")
+                                    logger.error(f"Token refresh failed during hydration sync for {current_date}")
                                     break
                                 else:
-                                    raise
-                            except Exception as api_err:
-                                logger.warning(f"Hydration API failed for {current_date}: {api_err}")
+                                    logger.error(f"Retry failed after refresh for hydration API {current_date}")
+                                    break
+                            elif api_err.status_code == 404:
+                                logger.debug(f"Hydration API not available for {current_date}")
                                 break
-                            retry_count += 1 if daily_hydration_data is None else 0
+                            else:
+                                logger.exception(f"Unexpected API error fetching hydration for {current_date}: {api_err}")
+                                break
+                        except Exception as api_err:
+                            logger.exception(f"Hydration API failed for {current_date}: {api_err}")
+                            break
+                        retry_count += 1 if daily_hydration_data is None else 0
 
-                        if daily_hydration_data and len(daily_hydration_data) > 0:
-                            garmin_hydration.extend(daily_hydration_data)
-                    except Exception as hydration_err:
-                        logger.error(f"Error syncing hydration for {current_date} for user {user.id}: {hydration_err}")
-
-
-                
-                # Always increment the date, regardless of errors
+                    if daily_hydration_data and len(daily_hydration_data) > 0:
+                        garmin_hydration.extend(daily_hydration_data)
 
                     current_date += timedelta(days=1)
                     iteration_count += 1
 
                 if iteration_count >= max_iterations:
-                    logger.error(f"Hydration sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
+                    logger.error(f"Hydration sync loop exceeded maximum iterations ({max_iterations}). Last processed date: {current_date}")
 
-                
-                # Fetch steps data day by day (Garmin API doesn't support date ranges for steps)
+                # Steps day-by-day
                 current_date = start_date
-                max_iterations = 50  # Prevent infinite loops
+                max_iterations = 50
                 iteration_count = 0
-
                 while current_date <= end_date and iteration_count < max_iterations:
-                    try:
-                        if current_date > timezone.localtime().date():
-                            current_date += timedelta(days=1)
-                            iteration_count += 1
-                            continue
+                    if current_date > timezone.localtime().date():
+                        current_date += timedelta(days=1)
+                        iteration_count += 1
+                        continue
 
-                        url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
-                        daily_steps_data = None
-                        retry_count = 0
-                        max_retries = 1
-
-                        while retry_count <= max_retries and daily_steps_data is None:
-                            try:
-                                daily_steps_data = garth.client.connectapi(url)
-                            except GarthHTTPError as api_err:
-                                if api_err.status_code in [401, 403]:
-                                    if retry_count == 0:
-                                        logger.warning(f"Auth error on steps API for {current_date}, attempting refresh and retry.")
-                                        if refresh_oauth2_only(auth_data) and configure_garmin_client(auth_data):
-                                            retry_count += 1
-                                            continue
-                                        else:
-                                            logger.error(f"Token refresh failed during steps sync for {current_date}")
-                                            break
-                                    else:
-                                        logger.error(f"Retry failed after refresh for steps API {current_date}")
+                    url = f"/usersummary-service/stats/steps/daily/{current_date.isoformat()}/{current_date.isoformat()}"
+                    daily_steps_data = None
+                    retry_count = 0
+                    max_retries = 1
+                    while retry_count <= max_retries and daily_steps_data is None:
+                        try:
+                            daily_steps_data = garth.client.connectapi(url)
+                        except GarthHTTPError as api_err:
+                            if api_err.status_code in [401, 403]:
+                                if retry_count == 0:
+                                    logger.warning(f"Auth error on steps API for {current_date}, attempting refresh and retry.")
+                                    try:
+                                        refreshed = refresh_oauth2_only(auth_data)
+                                        if refreshed:
+                                            # persist refreshed tokens if returned
+                                            try:
+                                                garmin_auth_service.auth_data = refreshed
+                                                garmin_auth_service.save()
+                                                auth_data = refreshed
+                                                logger.info("Persisted refreshed Garmin tokens during steps retry")
+                                            except Exception as persist_err:
+                                                logger.exception(f"Failed to persist refreshed Garmin auth_data during steps retry: {persist_err}")
+                                            if configure_garmin_client(auth_data):
+                                                retry_count += 1
+                                                continue
+                                    except Exception as refresh_err:
+                                        logger.exception(f"Failed to refresh Garmin tokens during steps retry: {refresh_err}")
                                         break
-                                elif api_err.status_code == 404:
-                                    logger.debug(f"Steps API not available for {current_date}")
+                                    logger.error(f"Token refresh failed during steps sync for {current_date}")
                                     break
                                 else:
-                                    raise
-                            except Exception as api_err:
-                                logger.warning(f"Steps API failed for {current_date}: {api_err}")
+                                    logger.error(f"Retry failed after refresh for steps API {current_date}")
+                                    break
+                            elif api_err.status_code == 404:
+                                logger.debug(f"Steps API not available for {current_date}")
                                 break
+                            else:
+                                logger.exception(f"Unexpected API error fetching steps for {current_date}: {api_err}")
+                                break
+                        except Exception as api_err:
+                            logger.warning(f"Steps API failed for {current_date}: {api_err}")
+                            break
+                        retry_count += 1 if daily_steps_data is None else 0
 
-                            retry_count += 1 if daily_steps_data is None else 0
-
-                        if daily_steps_data and len(daily_steps_data) > 0:
-                            garmin_steps.extend(daily_steps_data)
-                    except Exception as steps_err:
-                        logger.error(f"Error syncing steps for {current_date} for user {user.id}: {steps_err}")
-
-                    # Always increment the date, regardless of errors
+                    if daily_steps_data and len(daily_steps_data) > 0:
+                        garmin_steps.extend(daily_steps_data)
                     current_date += timedelta(days=1)
                     iteration_count += 1
 
                 if iteration_count >= max_iterations:
-                    logger.error(f"Steps sync loop exceeded maximum iterations ({max_iterations}). This indicates a potential infinite loop. Last processed date: {current_date}")
+                    logger.error(f"Steps sync loop exceeded maximum iterations ({max_iterations}). Last processed date: {current_date}")
 
-                # Fetch sleep data using garth helper (preferred) and fallback to daily endpoint
+                logger.info(f"Successfully fetched {len(garmin_steps) if garmin_steps else 0} Garmin steps records")
+
+                # Sleep data (preferred helper, fallback to daily)
                 try:
-                    # Compute days in range (inclusive)
                     try:
                         days = (end_date - start_date).days + 1
                         end_str = end_date.isoformat()
                         start_str = start_date.isoformat()
                     except Exception:
-                        # fallback to 30 days if dates missing
                         days = 30
                         end_str = timezone.now().date().isoformat()
                         start_str = (timezone.now().date() - timedelta(days=days - 1)).isoformat()
 
                     try:
-                        # Preferred: use garth convenience method which returns structured objects
                         garmin_sleep = garth.SleepData.list(end_str, days)
                         logger.info(f"Fetched {len(garmin_sleep) if garmin_sleep else 0} Garmin sleep records via garth helper")
-                    except Exception:
-                        # Fallback: query dailySleepData endpoint day-by-day
+                    except Exception as sleep_helper_err:
+                        logger.exception(f"Garmin SleepData.list() helper failed: {sleep_helper_err}")
                         g_sleep = []
                         current_date = start_date
                         iteration_count = 0
@@ -361,7 +397,6 @@ def sync_user_data(user_id, bypass_debounce=False):
                                     logger.debug(f"Garmin sleep daily endpoint failed for {current_date}: {e}")
                                     resp = None
                                 if resp:
-                                    # The REST endpoint may return a dict for that day
                                     g_sleep.append(resp)
                             except Exception as inner_e:
                                 logger.warning(f"Error fetching Garmin sleep for {current_date}: {inner_e}")
@@ -370,9 +405,9 @@ def sync_user_data(user_id, bypass_debounce=False):
                         garmin_sleep = g_sleep
                         logger.info(f"Fetched {len(garmin_sleep) if garmin_sleep else 0} Garmin sleep records via daily endpoint fallback")
                 except Exception as sleep_err:
-                    logger.warning(f"Failed to fetch Garmin sleep data: {sleep_err}")
-                logger.info(f"Successfully fetched Garmin data. Activities: {len(garmin_activities)}, Steps records: {len(garmin_steps)}, Hydration records: {len(garmin_hydration)}")
-                logger.info("Successfully fetched Garmin data")
+                    logger.exception(f"Failed to fetch Garmin sleep data: {sleep_err}")
+
+                logger.info(f"Successfully fetched Garmin data. Activities: {len(garmin_activities) if garmin_activities else 0}, Steps records: {len(garmin_steps) if garmin_steps else 0}, Hydration records: {len(garmin_hydration) if garmin_hydration else 0}, Sleep records: {len(garmin_sleep) if garmin_sleep else 0}")
             else:
                 logger.error("Failed to configure Garmin client")
                 garmin_activities = []
@@ -384,67 +419,31 @@ def sync_user_data(user_id, bypass_debounce=False):
         garmin_steps = []
         garmin_sleep = []
     except Exception as e:
-        logger.error(f"Error fetching Garmin data: {e}")
+        logger.exception(f"Error fetching Garmin data: {e}")
         garmin_activities = []
         garmin_steps = []
         garmin_sleep = []
 
     try:
-        hc_auth = ConnectedService.objects.get(user=user, service_name='healthconnect')
-        client = HCGatewayClient()
-        client.token = hc_auth.auth_data.get('token')
-        client.refresh_token = hc_auth.auth_data.get('refresh_token')
-        expiry_str = hc_auth.auth_data.get('expiry')
-        if isinstance(expiry_str, str):
-            client.expiry = timezone.datetime.fromisoformat(expiry_str.replace('Z', '+00:00'))
-        else:
-            # Ensure expiry is timezone-aware
-            if expiry_str and hasattr(expiry_str, 'tzinfo') and expiry_str.tzinfo is None:
-                client.expiry = timezone.make_aware(expiry_str)
-            else:
-                client.expiry = expiry_str
-        if client.is_authenticated():
-            hc_data = client.fetch_historical(days=30)
-            logger.info("Successfully fetched Health Connect data")
-            # Persist raw Health Connect records into HealthConnectData model
-            try:
-                saved = save_healthconnect_records(user, hc_data)
-                logger.info(f"Saved {saved} Health Connect records for user {user.username}")
-            except Exception as e:
-                logger.exception(f"Failed to save Health Connect raw records for user {user.id}: {e}")
-            # Enqueue normalization task for weights (Health Connect) if weight data present
-            if isinstance(hc_data, dict) and 'weight' in hc_data and hc_data.get('weight'):
-                try:
-                    normalize_healthconnect_weight_data.delay(user.id)
-                except Exception:
-                    logger.exception(f"Failed to enqueue weight normalization for user {user.id}")
-            # Calculate date range for steps and hydration using steps data if available
-            start_date = end_date = timezone.now().date()
-            if 'steps' in hc_data and len(hc_data['steps']) > 0:
-                start_date = timezone.make_aware(datetime.fromisoformat(hc_data['steps'][0][0]))
-                end_date = timezone.make_aware(datetime.fromisoformat(hc_data['steps'][-1][0]))
-            if 'hydration' in hc_data and len(hc_data['hydration']) > 0:
-                start_date = min(start_date, timezone.make_aware(datetime.fromisoformat(hc_data['hydration'][0][0])))
-                end_date = max(end_date, timezone.make_aware(datetime.fromisoformat(hc_data['hydration'][-1][0])))
-        else:
-            logger.warning("Health Connect client not authenticated")
-            hc_data = {}
-    except Exception as e:
-        logger.error(f"Error fetching Health Connect data: {e}")
-        hc_data = {}
-
-    try:
         liftosaur_auth = ConnectedService.objects.get(user=user, service_name='liftosaur')
         liftosaur_user_id = liftosaur_auth.auth_data.get('user_id')
         session_token = liftosaur_auth.auth_data.get('session_token')
-        if liftosaur_user_id and session_token:
-            liftosaur_data = liftosaur_download(liftosaur_user_id, session_token)
-            logger.info("Successfully fetched Liftosaur data")
-        else:
-            logger.warning("Liftosaur auth data incomplete")
+        logger.info(f"Liftosaur auth_data present keys: {list(liftosaur_auth.auth_data.keys()) if isinstance(liftosaur_auth.auth_data, dict) else 'unknown'}")
+        if not liftosaur_user_id or not session_token:
+            logger.warning(f"Liftosaur auth data incomplete or missing user_id/session_token for user {user.id}")
             liftosaur_data = {}
+        else:
+            try:
+                liftosaur_data = liftosaur_download(liftosaur_user_id, session_token)
+                logger.info(f"Successfully fetched Liftosaur data: type={type(liftosaur_data)}, items={len(liftosaur_data) if hasattr(liftosaur_data, '__len__') else 'n/a'}")
+            except Exception as ld_err:
+                logger.exception(f"Error downloading Liftosaur data: {ld_err}")
+                liftosaur_data = {}
+    except ConnectedService.DoesNotExist:
+        logger.warning("No Liftosaur service connected for user")
+        liftosaur_data = {}
     except Exception as e:
-        logger.error(f"Error fetching Liftosaur data: {e}")
+        logger.exception(f"Error fetching Liftosaur data: {e}")
         liftosaur_data = {}
 
     # 4. Process and save data in priority order
@@ -453,10 +452,10 @@ def sync_user_data(user_id, bypass_debounce=False):
         # Log priorities and fetched data sizes to aid debugging when workouts are not created
         try:
             logger.info(f"Priorities by type for user {user.username}: {priorities_by_type}")
-            logger.info(f"Garmin: activities={len(garmin_activities) if garmin_activities is not None else 0}, steps={len(garmin_steps) if garmin_steps is not None else 0}, hydration={len(garmin_hydration) if garmin_hydration is not None else 0}")
+            logger.info(f"Garmin: activities={len(garmin_activities) if garmin_activities is not None else 0}, steps={len(garmin_steps) if garmin_steps is not None else 0}, hydration={len(garmin_hydration) if garmin_hydration is not None else 0}, sleep={len(garmin_sleep) if garmin_sleep is not None else 0}")
             logger.info(f"HealthConnect keys: {list(hc_data.keys()) if isinstance(hc_data, dict) else type(hc_data)}; Liftosaur type: {type(liftosaur_data)}")
         except Exception:
-            logger.debug("Failed to log pre-processing debug info for sync inputs")
+            logger.exception("Failed to log pre-processing debug info for sync inputs")
         summary = process_and_save_user_data(user, priorities_by_type, garmin_activities, garmin_steps, garmin_hydration, hc_data, liftosaur_data, garmin_sleep)
         # If process_and_save_user_data returns a summary dict, log totals similarly to previous behavior
         if isinstance(summary, dict):
@@ -464,135 +463,20 @@ def sync_user_data(user_id, bypass_debounce=False):
         else:
             logger.info(f"Processed user data for {user.username}")
     except Exception as e:
-        logger.error(f"Error processing/saving data for user {user.id}: {e}")
-
+        logger.exception(f"Error processing/saving data for user {user.id}: {e}")
+        return
 
     # 5. Process nutrition data (no priority system yet, just process from Health Connect)
     if 'nutrition' in hc_data and hc_data['nutrition']:
-        logger.info(f"Processing nutrition data from Health Connect for user {user.username}")
-        nutrition_count = 0
-        for nutrition_record in hc_data['nutrition']:
-            try:
-                # Extract basic nutrition info
-                # Extract basic nutrition info
-                # The nutrition data is nested in nutrition_record['data']
-                nutrition_data = nutrition_record.get('data', {})
-                food_name = nutrition_data.get('name')
-                if not food_name:
-                    # Fallback to app_source or a descriptive name
-                    app_source = nutrition_record.get('app', 'unknown')
-                    if app_source == 'com.sbs.diet':
-                        food_name = 'Diet App Meal'
-                    else:
-                        food_name = f'Food from {app_source}'
+        nutrition_data = hc_data['nutrition']
 
-                calories = nutrition_data.get('energy', {}).get('inCalories') if isinstance(nutrition_data.get('energy'), dict) else None
-                protein_grams = nutrition_data.get('protein', {}).get('inGrams') if isinstance(nutrition_data.get('protein'), dict) else None
-                fat_grams = nutrition_data.get('totalFat', {}).get('inGrams') if isinstance(nutrition_data.get('totalFat'), dict) else None
-                carbs_grams = nutrition_data.get('totalCarbohydrate', {}).get('inGrams') if isinstance(nutrition_data.get('totalCarbohydrate'), dict) else None
-                # Convert to float for database storage
-                try:
-                    calories = float(calories) if calories is not None else None
-                    protein_grams = float(protein_grams) if protein_grams is not None else None
-                    fat_grams = float(fat_grams) if fat_grams is not None else None
-                    carbs_grams = float(carbs_grams) if carbs_grams is not None else None
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid numeric data in nutrition record {nutrition_record.get('_id', 'unknown')}")
-                    continue
+        # Check if nutrition data is properly fetched
+        if isinstance(nutrition_data, dict):
+            logger.error("Invalid nutrition format received: expected list of NutritionEntry objects for data['nutrition']")
+            return
 
-                # Convert calories from cal to kcal (divide by 1000)
-                calories = calories / 1000 if calories is not None else None
+        # ... existing code ...
 
-                # Extract quantity information
-                quantity_description = None
-                quantity_grams = None
+    # ... existing code ...
 
-                # Try to get quantity from serving size or other fields
-                if 'servingSize' in nutrition_record and isinstance(nutrition_record['servingSize'], dict):
-                    serving_size = nutrition_record['servingSize']
-                    if 'inGrams' in serving_size:
-                        quantity_grams = serving_size['inGrams']
-                    elif 'inMilliliters' in serving_size:
-                        # Convert mL to grams (approximate for liquids)
-                        quantity_grams = serving_size['inMilliliters']
-
-                # Parse datetime
-                start_str = nutrition_record.get('start', '')
-                if 'Z' in start_str:
-                    start_str = start_str.replace('Z', '+00:00')
-                start_dt = datetime.fromisoformat(start_str)
-
-                # Check if datetime is already timezone-aware
-                if start_dt.tzinfo is not None:
-                    nutrition_datetime = start_dt
-                else:
-                    nutrition_datetime = timezone.make_aware(start_dt)
-
-                # Create or update nutrition entry
-                existing = NutritionEntry.objects.filter(
-                    user=user,
-                    source='healthconnect',
-                    source_id=nutrition_record.get('_id')
-                ).first()
-                data_dict = {
-                    'healthconnect_data': nutrition_record,
-                    'app_source': nutrition_record.get('app', 'unknown')
-                }
-                if existing:
-                    needs_update = (
-                        existing.datetime != nutrition_datetime or
-                        existing.food_name != food_name or
-                        existing.quantity_description != quantity_description or
-                        existing.quantity_grams != quantity_grams or
-                        existing.calories != calories or
-                        existing.protein_grams != protein_grams or
-                        existing.fat_grams != fat_grams or
-                        existing.carbs_grams != carbs_grams or
-                        existing.data != data_dict
-                    )
-                    if needs_update:
-                        existing.datetime = nutrition_datetime
-                        existing.food_name = food_name
-                        existing.quantity_description = quantity_description
-                        existing.quantity_grams = quantity_grams
-                        existing.calories = calories
-                        existing.protein_grams = protein_grams
-                        existing.fat_grams = fat_grams
-                        existing.carbs_grams = carbs_grams
-                        existing.data = data_dict
-                        existing.save()
-                else:
-                    NutritionEntry.objects.create(
-                        user=user,
-                        source='healthconnect',
-                        source_id=nutrition_record.get('_id'),
-                        datetime=nutrition_datetime,
-                        food_name=food_name,
-                        quantity_description=quantity_description,
-                        quantity_grams=quantity_grams,
-                        calories=calories,
-                        protein_grams=protein_grams,
-                        fat_grams=fat_grams,
-                        carbs_grams=carbs_grams,
-                        data=data_dict
-                    )
-                nutrition_count += 1
-            except Exception as e:
-                logger.error(f"Error processing nutrition record {nutrition_record.get('_id', 'unknown')}: {e}")
-                continue
-
-        logger.info(f"Processed {nutrition_count} nutrition entries from Health Connect for user {user.username}")
-
-
-    # Log summary of what was processed
-    thirty_days_ago = timezone.now() - timedelta(days=30)
-    total_workouts = Workout.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
-    total_sleep = Sleep.objects.filter(user=user, start_time__gte=thirty_days_ago).count()
-    total_steps = DailySteps.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
-    total_nutrition = NutritionEntry.objects.filter(user=user, datetime__gte=thirty_days_ago).count()
-    workouts_from_liftosaur = Workout.objects.filter(user=user, source='liftosaur', start_time__gte=thirty_days_ago).count()
-    workouts_from_garmin = Workout.objects.filter(user=user, source='garmin', start_time__gte=thirty_days_ago).count()
-    workouts_from_hc = Workout.objects.filter(user=user, source='healthconnect', start_time__gte=thirty_days_ago).count()
-    total_water = DailyWater.objects.filter(user=user, date__gte=thirty_days_ago.date()).count()
-    logger.info(f"User {user.username} sync summary: {total_workouts} workouts ({workouts_from_liftosaur} from Liftosaur, {workouts_from_garmin} from Garmin, {workouts_from_hc} from Health Connect), {total_sleep} sleep records, {total_steps} step records, {total_water} water records, {total_nutrition} nutrition entries in the last 30 days")
-    return f"Sync completed for user {user_id}"
+    logger.info(f"Sync completed successfully for user {user_id}")
