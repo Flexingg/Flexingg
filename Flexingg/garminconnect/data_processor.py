@@ -82,13 +82,18 @@ def process_garmin_activities(user: UserProfile, activities: list) -> int:
                         currency_type='cardio_coins',
                         garmin_activity=obj
                     ).exists():
-                        join_month_start = user.user.date_joined.replace(day=1).date() if hasattr(user, 'user') else user.date_joined.replace(day=1).date()
-                        one_week_after = (user.user.date_joined + timedelta(weeks=1)).date() if hasattr(user, 'user') else (user.date_joined + timedelta(weeks=1)).date()
+                        # Require the activity to be on or after the user's actual join date,
+                        # and within one week after joining. This prevents awarding for activities
+                        # that occurred earlier in the same month before the user joined.
+                        user_join_dt = user.user.date_joined if hasattr(user, 'user') else user.date_joined
+                        if not user_join_dt:
+                            continue
+                        join_date = user_join_dt.date()
+                        one_week_after = (user_join_dt + timedelta(weeks=1)).date()
                         activity_date = obj.start_time_utc.date() if getattr(obj, 'start_time_utc', None) else None
-                        if activity_date and (join_month_start <= activity_date <= one_week_after):
+                        if activity_date and (join_date <= activity_date <= one_week_after):
                             # If UserProfile.user exists with earn_cardio_coins method
                             try:
-                                # Prefer the convenience method on UserProfile -> user. Fallback to user if available.
                                 owner = user.user if hasattr(user, 'user') else user
                                 owner.earn_cardio_coins(Decimal(str(obj.calories)), garmin_activity=obj)
                             except Exception as e:

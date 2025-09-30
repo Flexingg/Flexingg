@@ -438,8 +438,7 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
                                 logger.info(f"Updated existing Garmin sleep {existing.source_id} for user {user.username}")
                         else:
                             # Ensure required times exist; provide safe fallback if missing
-                            from django.utils import timezone
-                            from datetime import timedelta
+                            # Use module-level timezone and timedelta imports to avoid creating a local name
                             if not norm.get('start_time'):
                                 norm['start_time'] = timezone.now()
                             if not norm.get('end_time'):
@@ -716,7 +715,13 @@ def process_and_save_user_data(user, priorities_by_type, garmin_activities, garm
 
                 # Centralized awarding — creates Transaction records and updates user balances & XP
                 try:
-                    award_result = award_currencies_and_xp(user, cardio_coins_amount, gym_gems_amount, garmin_activity=None)
+                    award_result = award_currencies_and_xp(
+                        user,
+                        cardio_coins_amount,
+                        gym_gems_amount,
+                        garmin_activity=None,
+                        activity_timestamp=getattr(w, 'start_time', None)
+                    )
                 except Exception:
                     logger.exception(f"Error in awarding currencies/XP for workout {w.id}")
                     award_result = None

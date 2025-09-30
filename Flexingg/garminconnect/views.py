@@ -230,10 +230,14 @@ def perform_garmin_sync_activities(user, limit=500, start_date=None, end_date=No
                         currency_type='cardio_coins',
                         garmin_activity=obj
                     ).exists():
-                        join_month_start = user.date_joined.replace(day=1).date()
-                        one_week_after = (user.date_joined + timedelta(weeks=1)).date()
-                        activity_date = obj.start_time_utc.date()
-                        if join_month_start <= activity_date <= one_week_after:
+                        user_join_dt = getattr(user, 'date_joined', None)
+                        if not user_join_dt:
+                            continue
+                        join_date = user_join_dt.date()
+                        one_week_after = (user_join_dt + timedelta(weeks=1)).date()
+                        activity_date = obj.start_time_utc.date() if getattr(obj, 'start_time_utc', None) else None
+                        # Only award if activity occurred on/after the real join date and within one week after joining
+                        if activity_date and (join_date <= activity_date <= one_week_after):
                             user.earn_cardio_coins(Decimal(str(obj.calories)), garmin_activity=obj)
 
             except Exception as act_err:

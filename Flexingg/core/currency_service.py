@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation, getcontext
 from typing import Tuple
+from datetime import datetime as _dt_datetime, date as _dt_date
 
 # Set a sensible default precision for currency calculations
 getcontext().prec = 9
@@ -64,12 +65,130 @@ def calculate_xp_from_currencies(cardio_coins, gym_gems) -> int:
 
 
 # --- Higher-level helpers that interact with Django models --- #
-def award_currencies_and_xp(user, cardio_coins_amount, gym_gems_amount, garmin_activity=None):
+def award_currencies_and_xp(user, cardio_coins_amount, gym_gems_amount, garmin_activity=None, activity_timestamp=None):
     """
     Create Transaction records for CardioCoins, GymGems, and XP, update user balances and XP.
     This centralizes currency awarding and ensures Transaction.xp_awarded is recorded.
+
+    New behavior: if an activity timestamp (or a timestamp extractable from garmin_activity)
+    exists and is before the user's date_joined, the function will return without awarding
+    any currency/xp.
     """
     from .models import Transaction
+    from datetime import datetime as _dt_datetime, date as _dt_date
+
+    def _get_activity_time(obj):
+        if obj is None:
+            return None
+        # If the object is already a datetime/date/str or a callable (e.g., timezone.now),
+        # return it directly and let the normalizer handle it. This prevents accidentally
+        # returning attribute objects (methods) from getattr() calls on unexpected types.
+        from datetime import datetime as _local_dt, date as _local_date
+        try:
+            if isinstance(obj, (_local_dt, _local_date, str)) or callable(obj):
+                return obj
+        except Exception:
+            # Fall through to attribute/dict extraction
+            pass
+        try:
+            # model-like objects: common datetime fields
+            for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                val = getattr(obj, attr, None)
+                if val:
+                    return val
+            # dict-like objects
+            if isinstance(obj, dict):
+                for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    if obj.get(key):
+                        return obj.get(key)
+        except Exception:
+            return None
+        return None
+
+    def _normalize_to_datetime(val):
+        """
+        Normalize val to a datetime.datetime when possible.
+        - If val is callable, call it with no args and use its return value.
+        - If val is a datetime or date, convert/return a datetime.
+        - If val is an ISO string, attempt to parse with fromisoformat (handle trailing 'Z').
+        Returns a datetime or None.
+        """
+        if val is None:
+            return None
+        try:
+            # If it's callable (e.g., someone accidentally passed timezone.now), call it.
+            if callable(val):
+                try:
+                    val = val()
+                except Exception:
+                    return None
+            # datetime already
+            if isinstance(val, _dt_datetime):
+                return val
+            # date -> convert to datetime at midnight
+            if isinstance(val, _dt_date):
+                try:
+                    return _dt_datetime.combine(val, _dt_datetime.min.time())
+                except Exception:
+                    return None
+            # string -> try ISO parse
+            if isinstance(val, str):
+                try:
+                    s = val
+                    if 'Z' in s:
+                        s = s.replace('Z', '+00:00')
+                    return _dt_datetime.fromisoformat(s)
+                except Exception:
+                    return None
+        except Exception:
+            return None
+        return None
+
+    # Prefer explicit activity_timestamp param, fall back to garmin_activity
+    raw_activity_time = _get_activity_time(activity_timestamp) or _get_activity_time(garmin_activity)
+    activity_time = _normalize_to_datetime(raw_activity_time)
+
+    # Normalize user's date_joined as well and guard comparisons
+    raw_joined = getattr(user, 'date_joined', None)
+    joined_time = _normalize_to_datetime(raw_joined)
+
+    # If both normalized datetimes exist, do not award for pre-join activities
+    if activity_time and joined_time:
+        try:
+            # Prefer comparing epoch timestamps to avoid TypeError when objects are unusual.
+            act_epoch = None
+            join_epoch = None
+            if hasattr(activity_time, 'timestamp'):
+                try:
+                    act_epoch = float(activity_time.timestamp())
+                except Exception:
+                    act_epoch = None
+            elif isinstance(activity_time, (int, float)):
+                act_epoch = float(activity_time)
+
+            if hasattr(joined_time, 'timestamp'):
+                try:
+                    join_epoch = float(joined_time.timestamp())
+                except Exception:
+                    join_epoch = None
+            elif isinstance(joined_time, (int, float)):
+                join_epoch = float(joined_time)
+
+            if act_epoch is not None and join_epoch is not None:
+                if act_epoch < join_epoch:
+                    return {'cardio_coins': 0, 'gym_gems': 0, 'xp_awarded': 0}
+            else:
+                # Fallback: try direct comparison if both are datetimes
+                try:
+                    if activity_time < joined_time:
+                        return {'cardio_coins': 0, 'gym_gems': 0, 'xp_awarded': 0}
+                except Exception:
+                    # If comparison fails for any reason, fall through and allow awarding (defensive)
+                    pass
+        except Exception:
+            # Defensive: do not block awarding if unexpected errors occur during normalization/comparison
+            pass
+
     try:
         # Normalize to Decimals/ints
         cc = _to_decimal(cardio_coins_amount)

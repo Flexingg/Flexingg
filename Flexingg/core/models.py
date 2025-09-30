@@ -95,24 +95,61 @@ class UserProfile(AbstractUser):
             if obj is None:
                 return None
             try:
-                # model-like objects: common datetime fields
-                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                # Accept common datetime fields and Garmin-specific names.
+                for attr in ('start_time', 'start_time_utc', 'startTimeGMT', 'start_time_gmt', 'timestamp', 'created_at', 'begin_time', 'beginTimestamp'):
                     val = getattr(obj, attr, None)
                     if val:
                         return val
-                # dict-like objects
+                # dict-like objects - check common keys and Garmin keys
                 if isinstance(obj, dict):
-                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    for key in ('start_time', 'start_time_utc', 'startTimeGMT', 'beginTimestamp', 'timestamp', 'created_at', 'begin_time'):
                         if obj.get(key):
                             return obj.get(key)
             except Exception:
                 return None
             return None
 
-        activity_time = _get_activity_time(garmin_activity)
-        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
-            # Do not award currency for activities that occurred before the user joined
-            return
+        def _normalize_to_datetime(val):
+            from datetime import datetime as _dt_datetime, date as _dt_date
+            if val is None:
+                return None
+            try:
+                if callable(val):
+                    try:
+                        val = val()
+                    except Exception:
+                        return None
+                if isinstance(val, _dt_datetime):
+                    return val
+                if isinstance(val, _dt_date):
+                    try:
+                        return _dt_datetime.combine(val, _dt_datetime.min.time())
+                    except Exception:
+                        return None
+                if isinstance(val, str):
+                    try:
+                        s = val
+                        if 'Z' in s:
+                            s = s.replace('Z', '+00:00')
+                        return _dt_datetime.fromisoformat(s)
+                    except Exception:
+                        return None
+            except Exception:
+                return None
+            return None
+
+        raw_activity_time = _get_activity_time(garmin_activity)
+        activity_time = _normalize_to_datetime(raw_activity_time)
+        joined_raw = getattr(self, 'date_joined', None)
+        joined_time = _normalize_to_datetime(joined_raw)
+        if activity_time and joined_time:
+            try:
+                if activity_time < joined_time:
+                    # Do not award currency for activities that occurred before the user joined
+                    return
+            except Exception:
+                # defensive: if comparison fails, allow awarding to preserve existing behavior
+                pass
         Transaction.objects.create(
             user=self,
             currency_type='gym_gems',
@@ -127,22 +164,29 @@ class UserProfile(AbstractUser):
             if obj is None:
                 return None
             try:
-                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                for attr in ('start_time', 'start_time_utc', 'startTimeGMT', 'start_time_gmt', 'timestamp', 'created_at', 'begin_time', 'beginTimestamp'):
                     val = getattr(obj, attr, None)
                     if val:
                         return val
                 if isinstance(obj, dict):
-                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    for key in ('start_time', 'start_time_utc', 'startTimeGMT', 'beginTimestamp', 'timestamp', 'created_at', 'begin_time'):
                         if obj.get(key):
                             return obj.get(key)
             except Exception:
                 return None
             return None
 
-        activity_time = _get_activity_time(garmin_activity)
-        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
-            # Do not award currency for activities that occurred before the user joined
-            return
+        raw_activity_time = _get_activity_time(garmin_activity)
+        activity_time = _normalize_to_datetime(raw_activity_time)
+        joined_raw = getattr(self, 'date_joined', None)
+        joined_time = _normalize_to_datetime(joined_raw)
+        if activity_time and joined_time:
+            try:
+                if activity_time < joined_time:
+                    # Do not award currency for activities that occurred before the user joined
+                    return
+            except Exception:
+                pass
         Transaction.objects.create(
             user=self,
             currency_type='cardio_coins',
@@ -157,22 +201,29 @@ class UserProfile(AbstractUser):
             if obj is None:
                 return None
             try:
-                for attr in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                for attr in ('start_time', 'start_time_utc', 'startTimeGMT', 'start_time_gmt', 'timestamp', 'created_at', 'begin_time', 'beginTimestamp'):
                     val = getattr(obj, attr, None)
                     if val:
                         return val
                 if isinstance(obj, dict):
-                    for key in ('start_time', 'timestamp', 'created_at', 'begin_time'):
+                    for key in ('start_time', 'start_time_utc', 'startTimeGMT', 'beginTimestamp', 'timestamp', 'created_at', 'begin_time'):
                         if obj.get(key):
                             return obj.get(key)
             except Exception:
                 return None
             return None
 
-        activity_time = _get_activity_time(garmin_activity)
-        if activity_time and getattr(self, 'date_joined', None) and activity_time < self.date_joined:
-            # Do not award XP for activities that occurred before the user joined
-            return
+        raw_activity_time = _get_activity_time(garmin_activity)
+        activity_time = _normalize_to_datetime(raw_activity_time)
+        joined_raw = getattr(self, 'date_joined', None)
+        joined_time = _normalize_to_datetime(joined_raw)
+        if activity_time and joined_time:
+            try:
+                if activity_time < joined_time:
+                    # Do not award XP for activities that occurred before the user joined
+                    return
+            except Exception:
+                pass
         Transaction.objects.create(
             user=self,
             currency_type='xp',
