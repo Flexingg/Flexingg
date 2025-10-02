@@ -27,7 +27,7 @@
     <!-- Integrations -->
     <section>
         <h3 class="font-pixel text-lg text-purple-400">INTEGRATIONS</h3>
-        {% component "integrations_section" profile=profile %}{% endcomponent %}
+        {% component "connections" profile=profile %}{% endcomponent %}
 
         <!-- Manual Sync -->
         <div class="pt-4">
@@ -48,10 +48,12 @@
     </section>
 
     <!-- Notifications -->
+    <!--
     <section>
         <h3 class="font-pixel text-lg text-cyan-300">NOTIFICATIONS</h3>
         {% component "notifications_section" %}{% endcomponent %}
     </section>
+    -->
 
     <!-- Stat Card Configuration UI (SortableJS) -->
     <section id="stat-config-section" class="p-4 md:p-6 mt-8 pixel-border bg-[#2a2a2a]">
@@ -187,5 +189,6 @@
 
 </main>
 {% endblock content %}
+
 
 

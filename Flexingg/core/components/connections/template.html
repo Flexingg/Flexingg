@@ -1,0 +1,302 @@
+<div class="pixel-border bg-[#2a2a2a] mt-3 p-4 space-y-4">
+    <!-- Garmin Connect Row -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <span class="w-3 h-3 rounded-full {% if garmin_connected %}bg-green-400{% else %}bg-red-400{% endif %}"></span>
+            <span class="font-pixel text-sm text-white">Garmin Connect</span>
+        </div>
+
+        {% if garmin_connected %}
+        <div class="flex space-x-2 items-center">
+            <form method="post" action="{% url 'garminconnect:disconnect_garmin' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+            <button type="button" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="garmin">INFO</button>
+        </div>
+        {% else %}
+        <div class="flex space-x-2 items-center">
+            <button id="garmin-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+            <button type="button" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="garmin">INFO</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Liftosaur Row -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <span class="w-3 h-3 rounded-full {% if liftosaur_connected %}bg-green-400{% else %}bg-red-400{% endif %}"></span>
+            <span class="font-pixel text-sm text-white">Liftosaur</span>
+        </div>
+
+        {% if liftosaur_connected %}
+        <div class="flex space-x-2 items-center">
+            <form method="post" action="{% url 'fitness:disconnect_liftosaur' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+            <button type="button" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="liftosaur">INFO</button>
+        </div>
+        {% else %}
+        <div class="relative">
+            <!-- Connect button with dropdown for One-Time vs Continuous -->
+            <button id="liftosaur-connect-dropdown" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT ▾</button>
+            <div id="liftosaur-dropdown-menu" class="hidden absolute right-0 mt-2 w-56 bg-[#2a2a2a] rounded pixel-border p-2 space-y-2 z-40">
+                <button type="button" class="w-full text-left pixel-button px-3 py-2 font-pixel text-xs text-cyan-300" data-action="one-time">One-Time (file upload)</button>
+                <button type="button" class="w-full text-left pixel-button px-3 py-2 font-pixel text-xs text-cyan-300" data-action="continuous">Continuous (session token)</button>
+            </div>
+            <button type="button" class="ml-2 pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="liftosaur">INFO</button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Health Connect Row -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <span class="w-3 h-3 rounded-full {% if hc_connected %}bg-green-400{% else %}bg-red-400{% endif %}"></span>
+            <span class="font-pixel text-sm text-white">Health Connect</span>
+        </div>
+
+        {% if hc_connected %}
+        <div class="flex space-x-2 items-center">
+            <form method="post" action="{% url 'healthconnect:disconnect' %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-red-400">DISCONNECT</button>
+            </form>
+            <button type="button" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="healthconnect">INFO</button>
+        </div>
+        {% else %}
+        <div class="flex space-x-2 items-center">
+            <button id="health-connect-btn" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">CONNECT</button>
+            <button type="button" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-300 info-button" data-service="healthconnect">INFO</button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Info Modals (usage instructions per service) -->
+<div id="info-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 id="info-modal-title" class="font-pixel text-lg text-white mb-3"></h3>
+        <div id="info-modal-body" class="font-pixel text-sm text-gray-300 mb-4"></div>
+        <div class="flex justify-end">
+            <button type="button" onclick="toggleInfoModal()" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Garmins Modal -->
+{% if not garmin_connected %}
+<div id="garmin-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Link Garmin Connect</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">Link your Garmin Connect account to sync activities, steps, water, sleep, and bodyweight. We do not store your password, only the OAuth token.</p>
+        <form method="post" action="{% url 'garminconnect:connect_garmin' %}" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Email</label>
+                <input type="email" name="garmin_email" required class="pixel-input w-full" placeholder="your.email@garmin.com"/>
+            </div>
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Password</label>
+                <input type="password" name="garmin_password" required class="pixel-input w-full" placeholder="Password"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" data-dismiss="garmin-modal" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Liftosaur One-Time Modal -->
+{% if not liftosaur_connected %}
+<div id="liftosaur-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Connect Liftosaur (One-Time Upload)</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            1. Go to <a href="https://www.liftosaur.com/app/" class="text-xs text-cyan-300 underline">https://www.liftosaur.com/app/</a><br>
+            2. Select "Me" → "Export data to JSON file"<br>
+            3. Upload the JSON file below
+        </p>
+        <form id="liftosaur-import-form" method="post" action="{% url 'liftosaur:import_data' %}" enctype="multipart/form-data" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Upload JSON File</label>
+                <input type="file" name="file" accept=".json" required class="pixel-input w-full"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" data-dismiss="liftosaur-modal" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Liftosaur Continuous Modal (session token) -->
+<div id="liftosaur-advanced-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96 max-h-[80vh] overflow-y-auto">
+        <h3 class="font-pixel text-lg text-white mb-4">Advanced Automatic Syncing</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            To enable automatic syncing, extract your Liftosaur session token and paste it here.
+        </p>
+        <form id="liftosaur-token-form" method="post" action="{% url 'liftosaur:save_token' %}" class="w-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Liftosaur Session Token</label>
+                <input type="text" name="liftosaur_session_token" required class="pixel-input w-full" placeholder="Paste the session value here"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" data-dismiss="liftosaur-advanced-modal" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Health Connect Modal -->
+{% if not hc_connected %}
+<div id="hc-modal" class="fixed inset-0 bg-black hidden flex items-center justify-center z-50">
+    <div class="bg-[#2a2a2a] p-6 rounded pixel-border w-96">
+        <h3 class="font-pixel text-lg text-white mb-4">Connect Health Connect</h3>
+        <p class="font-pixel text-sm text-gray-300 mb-2">
+            Android users: downloading the Flexingg‑Sync app can link MyFitnessPal, MacroFactor, Oura, and more.
+        </p>
+        <a href="{% url 'healthconnect:download_apk' %}" target="_blank" class="pixel-button inline-block px-4 py-2 font-pixel text-xs text-cyan-300 mb-4">Download Flexingg‑Sync</a>
+        <p class="font-pixel text-sm text-gray-300 mb-4">
+            After installing, point the app to <button type="button" class="font-mono text-cyan-300 underline px-1" onclick="copyServerUrl()">https://api.flexin.gg</button>, set a username &amp; password, then use the same credentials here to connect.
+        </p>
+        <form method="post" action="{% url 'healthconnect:connect' %}" class="w-full h-full">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Username</label>
+                <input type="text" name="hc_username" required class="pixel-input w-full" placeholder="HCGateway username"/>
+            </div>
+            <div class="mb-4">
+                <label class="font-pixel text-sm text-white block mb-1">Password</label>
+                <input type="password" name="hc_password" required class="pixel-input w-full" placeholder="Password"/>
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" data-dismiss="hc-modal" class="pixel-button px-4 py-2 font-pixel text-xs text-gray-500">Cancel</button>
+                <button type="submit" class="pixel-button px-4 py-2 font-pixel text-xs text-cyan-300">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<script>
+/* Minimal hooks - full behavior lives in connections/script.js (component Media) */
+document.addEventListener('DOMContentLoaded', function() {
+
+    // Ensure toggle functions exist before any handlers run
+    window.toggleLiftosaurModal = window.toggleLiftosaurModal || function() {
+        const modal = document.getElementById('liftosaur-modal');
+        if (modal) modal.classList.toggle('hidden');
+    };
+    window.toggleLiftosaurAdvancedModal = window.toggleLiftosaurAdvancedModal || function() {
+        const modal = document.getElementById('liftosaur-advanced-modal');
+        if (modal) modal.classList.toggle('hidden');
+    };
+    window.toggleGarminModal = window.toggleGarminModal || function() {
+        const modal = document.getElementById('garmin-modal');
+        if (modal) modal.classList.toggle('hidden');
+    };
+    window.toggleHCModal = window.toggleHCModal || function() {
+        const modal = document.getElementById('hc-modal');
+        if (modal) modal.classList.toggle('hidden');
+    };
+    window.toggleInfoModal = window.toggleInfoModal || function() {
+        const modal = document.getElementById('info-modal');
+        if (modal) modal.classList.toggle('hidden');
+    };
+
+    // showInfoForService function
+    window.showInfoForService = function(service) {
+        const titleEl = document.getElementById('info-modal-title');
+        const bodyEl = document.getElementById('info-modal-body');
+        if (!titleEl || !bodyEl) return;
+        if (service === 'garmin') {
+            titleEl.textContent = 'Garmin Connect - Usage';
+            bodyEl.innerHTML = '<p class="mb-2"><a href="https://connect.garmin.com/" target="_blank" class="text-cyan-300 underline">Garmin Connect</a> is the service used by Garmin smartwatches to gather data. Link your Garmin Connect account to sync data from your Garmin watch to Flexin.gg. This can include steps, workouts, water, sleep, and more to come!</p>';
+        } else if (service === 'liftosaur') {
+            titleEl.textContent = 'Liftosaur - Usage';
+            bodyEl.innerHTML = '<p class="mb-2"><a href="https://www.liftosaur.com/app/" target="_blank" class="text-cyan-300 underline">Liftosaur</a> is a weightlifting app for programmers. Link to your Liftosaur account to sync all your workouts, either manually or automatically.</p>';
+        } else if (service === 'healthconnect') {
+            titleEl.textContent = 'Health Connect - Usage';
+            bodyEl.innerHTML = '<p class="mb-2"><a href="https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata&pcampaignid=web_share" target="_blank" class="text-cyan-300 underline">Health Connect</a> is Android devices\' common health platform. Linking to this enables your Android phone to send nearly all workout and health metrics that your various phone apps have to Flexin.gg.</p>';
+        } else {
+            titleEl.textContent = 'Info';
+            bodyEl.textContent = '';
+        }
+        toggleInfoModal();
+    };
+
+    // Delegated dismiss handler for buttons with data-dismiss attribute
+    document.body.addEventListener('click', function(e) {
+        const target = e.target;
+        if (target && target.getAttribute && target.getAttribute('data-dismiss')) {
+            const modalId = target.getAttribute('data-dismiss');
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.add('hidden');
+        }
+    });
+
+    // Dropdown menu toggle
+    const ddTrigger = document.getElementById('liftosaur-connect-dropdown');
+    const ddMenu = document.getElementById('liftosaur-dropdown-menu');
+    if (ddTrigger && ddMenu) {
+        ddTrigger.addEventListener('click', function(e) {
+            ddMenu.classList.toggle('hidden');
+        });
+        ddMenu.querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const action = this.getAttribute('data-action');
+                if (action === 'one-time') {
+                    // call the already-defined toggle function
+                    window.toggleLiftosaurModal();
+                } else if (action === 'continuous') {
+                    window.toggleLiftosaurAdvancedModal();
+                }
+                ddMenu.classList.add('hidden');
+            });
+        });
+    }
+
+    // Connect buttons that open modals
+    const garminConnectBtn = document.getElementById('garmin-connect-btn');
+    if (garminConnectBtn) garminConnectBtn.addEventListener('click', window.toggleGarminModal);
+
+    const healthConnectBtn = document.getElementById('health-connect-btn');
+    if (healthConnectBtn) healthConnectBtn.addEventListener('click', window.toggleHCModal);
+
+    // Info buttons
+    document.querySelectorAll('.info-button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const service = this.getAttribute('data-service');
+            showInfoForService(service);
+        });
+    });
+
+    // copyServerUrl utility
+    window.copyServerUrl = window.copyServerUrl || function() {
+        const url = 'https://api.flexin.gg';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(() => {
+                // Use toast_notifications via global toast if available; fallback to alert
+                if (window.showToast) {
+                    window.showToast('Server URL copied to clipboard');
+                } else {
+                    alert('Server URL copied to clipboard');
+                }
+            }).catch(() => {
+                prompt('Copy this server URL', url);
+            });
+        } else {
+            prompt('Copy this server URL', url);
+        }
+    };
+});
+</script>

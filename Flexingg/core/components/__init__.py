@@ -2,5 +2,6 @@
 from . import profile_section
 from . import account_section
 from . import notifications_section
+from . import connections
 # from . import integrations_section
 # from . import save_logout_buttons

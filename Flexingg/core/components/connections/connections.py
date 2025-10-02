@@ -1,9 +1,9 @@
 from django_components import component
 from garminconnect.models import Garmin_Auth
 
-@component.register("integrations_section")
-class IntegrationsSection(component.Component):
-    template_name = "integrations_section/template.html"
+@component.register("connections")
+class Connections(component.Component):
+    template_name = "connections/template.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs) or {}
@@ -21,5 +21,5 @@ class IntegrationsSection(component.Component):
         return context
 
     class Media:
-        css = "integrations_section/style.css"
-        js = ("integrations_section/script.js",)
+        css = "connections/style.css"
+        js = ("connections/script.js",)
