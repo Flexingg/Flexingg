@@ -12,7 +12,8 @@ class CaloriesPodium(component.Component):
     template_name = "calories_podium/template.html"
 
     def get_context_data(self, **kwargs):
-        cutoff = timezone.now().date() - timedelta(days=30)
+        today = timezone.now().date()
+        cutoff = today.replace(day=1)
         users = UserProfile.objects.all()
         annotated_users = users.annotate(
             metric_value=Coalesce(
