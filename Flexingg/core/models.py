@@ -26,7 +26,7 @@ class UserProfile(AbstractUser):
     bodyweight_lbs = models.DecimalField(
         max_digits=6,
         decimal_places=2,
-        default=200.00,
+        default=100.00,
         help_text="Fallback bodyweight in lbs when synced weight is unavailable"
     )
     str_stat = models.IntegerField(default=0)

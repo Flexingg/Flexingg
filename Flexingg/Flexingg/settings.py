@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "pwa",
     "django_celery_results",
     "django_celery_beat",
+    "rest_framework"
 ]
 
 MIDDLEWARE = [
@@ -250,3 +251,14 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = os.getenv('TIMEZONE', 'UTC')
+
+
+# Django Rest Framework settings
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly',
+    ]
+}

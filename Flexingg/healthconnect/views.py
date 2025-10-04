@@ -10,7 +10,7 @@ from .utils import HCGatewayClient
 from .models import HealthConnectData
 from core.models import UserProfile, ConnectedService
 import logging
-from healthconnect.sync_tasks import healthconnect_sync_task
+from healthconnect.sync_tasks import healthconnect_sync_task, healthconnect_sync_and_stage_task
 from healthconnect.normalization_tasks import *
 from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
@@ -145,6 +145,27 @@ def sync_healthconnect(request):
         return JsonResponse({'success': True, 'saved': saved_count, 'message': 'Sync completed.'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def trigger_healthconnect_staged_sync(request):
+    """
+    Lightweight endpoint to trigger the plan-driven staging sync (fast write-only ingestion).
+    Calls the Celery task healthconnect_sync_and_stage_task(profile_id) and returns 202 Accepted.
+    Intended to be called via a client-side click (GET) from the settings UI.
+    """
+    profile = request.user
+    if not getattr(profile, 'hc_username', None):
+        return JsonResponse({'error': 'Not connected to Health Connect.'}, status=400)
+
+    try:
+        # Fire-and-forget Celery task
+        healthconnect_sync_and_stage_task.delay(profile.id)
+        return JsonResponse({'status': 'started', 'message': 'Health Connect staging sync started.'}, status=202)
+    except Exception as e:
+        logger.exception("Failed to trigger staged sync for profile %s: %s", getattr(profile, 'id', 'unknown'), e)
+        return JsonResponse({'error': 'failed_to_start', 'message': str(e)}, status=500)
 
 
 @login_required

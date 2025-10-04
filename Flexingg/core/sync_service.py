@@ -14,6 +14,7 @@ from garth.exc import GarthException, GarthHTTPError
 from healthconnect.utils import HCGatewayClient
 from healthconnect.data_processor import save_healthconnect_records
 from healthconnect.normalization_tasks import normalize_healthconnect_weight_data
+from healthconnect.sync_tasks import healthconnect_sync_and_stage_task
 
 # Liftosaur imports
 from .liftosaur_client import liftosaur_download
@@ -334,6 +335,10 @@ def sync_user_data(user_id, bypass_debounce=False):
                                             if configure_garmin_client(auth_data):
                                                 retry_count += 1
                                                 continue
+                                        else:
+                                            if configure_garmin_client(auth_data):
+                                                retry_count += 1
+                                                continue
                                     except Exception as refresh_err:
                                         logger.exception(f"Failed to refresh Garmin tokens during steps retry: {refresh_err}")
                                         break
@@ -446,6 +451,18 @@ def sync_user_data(user_id, bypass_debounce=False):
         logger.exception(f"Error fetching Liftosaur data: {e}")
         liftosaur_data = {}
 
+    # If the user has Health Connect linked, kick off the fast staging sync (write-only ingestion)
+    try:
+        hc_auth = ConnectedService.objects.get(user=user, service_name='healthconnect')
+        try:
+            healthconnect_sync_and_stage_task.delay(user.id)
+            logger.info(f"Triggered Health Connect staged sync for user {user.id}")
+        except Exception as e:
+            logger.warning(f"Failed to trigger Health Connect staged sync for user {user.id}: {e}")
+    except ConnectedService.DoesNotExist:
+        # No HC connection for this user — that's fine.
+        logger.debug(f"No Health Connect ConnectedService for user {user.id}; skipping staged sync trigger")
+
     # 4. Process and save data in priority order
     # Delegate heavy processing to core.data_processor.process_and_save_user_data
     try:
@@ -476,7 +493,5 @@ def sync_user_data(user_id, bypass_debounce=False):
             return
 
         # ... existing code ...
-
-    # ... existing code ...
 
     logger.info(f"Sync completed successfully for user {user_id}")

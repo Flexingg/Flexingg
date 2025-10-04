@@ -54,7 +54,7 @@
     <div class="flex items-center justify-between">
         <div class="flex items-center space-x-3">
             <span class="w-3 h-3 rounded-full {% if hc_connected %}bg-green-400{% else %}bg-red-400{% endif %}"></span>
-            <span class="font-pixel text-sm text-white">Health Connect</span>
+            <span id="hc-trigger-link" class="font-pixel text-sm text-white cursor-pointer underline">Health Connect</span>
         </div>
 
         {% if hc_connected %}
@@ -271,6 +271,41 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const healthConnectBtn = document.getElementById('health-connect-btn');
     if (healthConnectBtn) healthConnectBtn.addEventListener('click', window.toggleHCModal);
+
+    // Click on the "Health Connect" label triggers a fast staging sync (fire-and-forget)
+    const hcTriggerLink = document.getElementById('hc-trigger-link');
+    if (hcTriggerLink) {
+        hcTriggerLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            // Use Django URL tag to build the endpoint path
+            const url = "{% url 'healthconnect:trigger_staged_sync' %}";
+            // Provide immediate UI feedback
+            if (window.showToast) window.showToast('Starting Health Connect sync...');
+            fetch(url, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: {'Accept': 'application/json'}
+            }).then(async (resp) => {
+                let payload = {};
+                try { payload = await resp.json(); } catch (err) { /* ignore */ }
+                if (resp.status === 202 || payload.status === 'started') {
+                    if (window.showToast) window.showToast('Health Connect staging sync started.');
+                    else alert('Health Connect staging sync started.');
+                } else if (payload && payload.error) {
+                    const msg = payload.message || payload.error || 'Failed to start sync';
+                    if (window.showToast) window.showToast(msg);
+                    else alert(msg);
+                } else {
+                    if (window.showToast) window.showToast('Unexpected response from server.');
+                    else alert('Unexpected response from server.');
+                }
+            }).catch(err => {
+                console.error('Failed to trigger staged sync', err);
+                if (window.showToast) window.showToast('Failed to start Health Connect sync.');
+                else alert('Failed to start Health Connect sync.');
+            });
+        });
+    }
 
     // Info buttons
     document.querySelectorAll('.info-button').forEach(btn => {
